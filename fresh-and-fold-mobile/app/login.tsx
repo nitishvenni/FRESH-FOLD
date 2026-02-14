@@ -1,26 +1,48 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+} from "react-native";
 import { useState } from "react";
-import { API_BASE_URL } from "../constants/api";
+import { useRouter } from "expo-router";
 
 export default function LoginScreen() {
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const router = useRouter();
+  const [mobile, setMobile] = useState("");
 
-  const testBackend = async () => {
-    try {
-      setLoading(true);
-      setMessage("");
+  const handleLogin = async () => {
+  if (mobile.length !== 10) {
+    Alert.alert("Invalid Number", "Please enter a valid 10-digit mobile number.");
+    return;
+  }
 
-      const response = await fetch(`${API_BASE_URL}/health`);
-      const data = await response.json();
+  try {
+    const response = await fetch("http://10.0.2.2:4000/auth/send-otp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ mobile }),
+    });
 
-      setMessage(data.app); // "Fresh & Fold Backend"
-    } catch (error) {
-      setMessage("Failed to connect to backend");
-    } finally {
-      setLoading(false);
+    const data = await response.json();
+
+    if (response.ok) {
+     router.push({
+  pathname: "/otp",
+  params: { mobile },
+});
+
+    } else {
+      Alert.alert("Error", data.message);
     }
-  };
+  } catch (error) {
+    Alert.alert("Network Error", "Could not connect to server.");
+  }
+};
 
   return (
     <View style={styles.container}>
@@ -30,18 +52,15 @@ export default function LoginScreen() {
       <TextInput
         placeholder="Enter mobile number"
         keyboardType="phone-pad"
+        maxLength={10}
+        value={mobile}
+        onChangeText={setMobile}
         style={styles.input}
       />
 
-      <TouchableOpacity style={styles.button} onPress={testBackend}>
-        {loading ? (
-          <ActivityIndicator color="#FFFFFF" />
-        ) : (
-          <Text style={styles.buttonText}>Test Backend</Text>
-        )}
+      <TouchableOpacity style={styles.button} onPress={handleLogin}>
+        <Text style={styles.buttonText}>Continue</Text>
       </TouchableOpacity>
-
-      {message ? <Text style={styles.result}>{message}</Text> : null}
     </View>
   );
 }
@@ -84,11 +103,5 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
-  },
-  result: {
-    marginTop: 20,
-    textAlign: "center",
-    color: "#000000",
-    fontSize: 14,
   },
 });
