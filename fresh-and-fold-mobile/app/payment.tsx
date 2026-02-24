@@ -20,9 +20,9 @@ export default function Payment() {
     slot,
     addressId,
     addressName,
-    total,
   } = useLocalSearchParams();
 const [backendTotal, setBackendTotal] = useState<number>(0);
+const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
 const [loadingTotal, setLoadingTotal] = useState(true);
 
   const parsedItems = items ? JSON.parse(items as string) : {};
@@ -51,16 +51,20 @@ const fetchPreview = async () => {
           Authorization: token || "",
         },
         body: JSON.stringify({
-          items: orderItems,
-        }),
+  items: orderItems,
+  service,
+}),
+
       }
     );
 
     const data = await response.json();
 
     if (data.success) {
-      setBackendTotal(data.totalAmount);
-    }
+  setBackendTotal(data.totalAmount);
+  setDeliveryCharge(data.deliveryCharge);
+}
+
   } catch (error) {
     console.log("Preview failed");
   } finally {
@@ -156,6 +160,12 @@ const fetchPreview = async () => {
               {addressName}
             </Text>
           </View>
+<View style={styles.row}>
+  <Text style={styles.totalLabel}>Total</Text>
+  <Text style={styles.totalAmount}>
+    ₹{backendTotal}
+  </Text>
+</View>
 
           <View style={styles.divider} />
 

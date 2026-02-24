@@ -16,9 +16,12 @@ export default function TrackOrder() {
   const [loading, setLoading] = useState(true);
 
   const steps = [
+
+    "Reached at Facility",
     "Scheduled",
     "Picked Up",
     "Washing",
+    "Ironing",
     "Out for Delivery",
     "Delivered",
   ];
