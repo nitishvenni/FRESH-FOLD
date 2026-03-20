@@ -10,9 +10,12 @@ export const authMiddleware = (
   res: Response,
   next: NextFunction
 ) => {
-  const token = req.headers.authorization;
+  const authHeader = req.headers.authorization;
+  const token = authHeader
+    ?.replace(/^(\s*Bearer\s+)+/i, "")
+    .trim();
 
-  if (!token) {
+  if (!token || token === "null" || token === "undefined") {
     return res.status(401).json({ message: "No token provided" });
   }
 

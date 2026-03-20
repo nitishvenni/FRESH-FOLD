@@ -17,20 +17,50 @@ const orderSchema = new mongoose.Schema(
         itemName: String,
         quantity: Number,
         price: Number,
+        itemTotal: Number,
       },
     ],
+    service: String,
+    deliveryCharge: Number,
     totalAmount: Number,
-   status: {
-  type: String,
-  enum: [
-    "Scheduled",
-    "Picked Up",
-    "Washing",
-    "Out for Delivery",
-    "Delivered",
-  ],
-  default: "Scheduled",
-},
+    paymentId: {
+      type: String,
+      required: true,
+      unique: true,
+      sparse: true,
+    },
+    paymentOrderId: {
+      type: String,
+      required: true,
+      unique: true,
+      sparse: true,
+    },
+    paymentSignature: {
+      type: String,
+      required: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["verified"],
+      default: "verified",
+    },
+    paidAt: {
+      type: Date,
+      default: Date.now,
+    },
+    status: {
+      type: String,
+      enum: [
+        "Scheduled",
+        "Received at Facility",
+        "Picked Up",
+        "Washing",
+        "Ironing",
+        "Out for Delivery",
+        "Delivered",
+      ],
+      default: "Scheduled",
+    },
   },
   { timestamps: true }
 );
