@@ -14,7 +14,7 @@ const THEME_PREFERENCE_KEY = "themePreference";
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>("system");
+  const [preference, setPreferenceState] = useState<ThemePreference>("light");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

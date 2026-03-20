@@ -14,14 +14,21 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import { MaterialIcons } from "@expo/vector-icons";
 import { apiRequest } from "../utils/api";
 import { supportSocket } from "../utils/socket";
 import { APP_TAB_BAR_HEIGHT } from "../components/AppTabBar";
 import ChatBubble from "../components/ChatBubble";
 import EmptyStateAnimation from "../components/EmptyStateAnimation";
-import { colors, radius, shadows, spacing, typography } from "../theme/theme";
+import { radius, shadows, spacing, typography } from "../theme/theme";
 import { handleError } from "../utils/errorHandler";
 import { showToast } from "../utils/toast";
+import { useAppTheme } from "../hooks/useAppTheme";
+import {
+  mergeConversationMessages,
+  parseDismissedTicketState,
+  type DismissedSupportTicketState,
+} from "../utils/supportChatState";
 
 type ChatRole = "user" | "assistant" | "admin";
 type TicketSender = "user" | "admin" | "ai";
@@ -87,8 +94,9 @@ const starterMessage: ChatMessage = {
   time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 };
 
-const INPUT_BAR_BASE_HEIGHT = 104;
+const INPUT_BAR_BASE_HEIGHT = 146;
 const SUPPORT_CHAT_STORAGE_KEY = "support_chat";
+const DISMISSED_SUPPORT_TICKET_KEY = "dismissed_support_ticket";
 
 const toTimeLabel = (value?: string) =>
   new Date(value || Date.now()).toLocaleTimeString([], {
@@ -104,30 +112,9 @@ const mapTicketMessageToChat = (message: TicketMessage, index: number): ChatMess
   createdAt: message.createdAt,
 });
 
-const mergeTicketMessages = (current: ChatMessage[], incoming: ChatMessage[]) => {
-  const existingKeys = new Set(
-    current
-      .filter((message) => message.createdAt)
-      .map((message) => `${message.role}|${message.text}|${message.createdAt}`)
-  );
-
-  const next = [...current];
-  incoming.forEach((message) => {
-    const messageKey = `${message.role}|${message.text}|${message.createdAt || ""}`;
-    if (message.createdAt && existingKeys.has(messageKey)) {
-      return;
-    }
-    if (message.createdAt) {
-      existingKeys.add(messageKey);
-    }
-    next.push(message);
-  });
-
-  return next;
-};
-
 export default function SupportScreen() {
   const insets = useSafeAreaInsets();
+  const { theme, isDark } = useAppTheme();
   const [messages, setMessages] = useState<ChatMessage[]>([starterMessage]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -136,7 +123,9 @@ export default function SupportScreen() {
   const [ticketId, setTicketId] = useState<string | null>(null);
   const [ticketStatus, setTicketStatus] = useState<SupportTicket["status"] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [storageHydrated, setStorageHydrated] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const dismissedTicketRef = useRef<DismissedSupportTicketState | null>(null);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -146,8 +135,15 @@ export default function SupportScreen() {
 
   useEffect(() => {
     void loadStoredState();
-    void loadActiveTicket();
   }, []);
+
+  useEffect(() => {
+    if (!storageHydrated) {
+      return;
+    }
+
+    void loadActiveTicket();
+  }, [storageHydrated]);
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -189,7 +185,7 @@ export default function SupportScreen() {
       }
 
       const mapped = mapTicketMessageToChat(payload.message, Date.now());
-      setMessages((prev) => mergeTicketMessages(prev, [mapped]));
+      setMessages((prev) => mergeConversationMessages(prev, [mapped]));
     };
 
     const handleTicketUpdated = (ticket: SupportTicket) => {
@@ -197,8 +193,7 @@ export default function SupportScreen() {
         return;
       }
 
-      setTicketStatus(ticket.status);
-      setMessages(ticket.messages.map(mapTicketMessageToChat));
+      syncTicketState(ticket);
     };
 
     supportSocket.on("ticketMessage", handleTicketMessage);
@@ -225,7 +220,13 @@ export default function SupportScreen() {
 
   const loadStoredState = async () => {
     try {
-      const stored = await AsyncStorage.getItem(SUPPORT_CHAT_STORAGE_KEY);
+      const [stored, dismissedTicketId] = await Promise.all([
+        AsyncStorage.getItem(SUPPORT_CHAT_STORAGE_KEY),
+        AsyncStorage.getItem(DISMISSED_SUPPORT_TICKET_KEY),
+      ]);
+
+      dismissedTicketRef.current = parseDismissedTicketState(dismissedTicketId);
+
       if (!stored) {
         return;
       }
@@ -255,6 +256,8 @@ export default function SupportScreen() {
       setTicketId(typeof parsed.ticketId === "string" && parsed.ticketId ? parsed.ticketId : null);
     } catch {
       console.log("Failed to load chat");
+    } finally {
+      setStorageHydrated(true);
     }
   };
 
@@ -270,6 +273,16 @@ export default function SupportScreen() {
         token,
       });
 
+      const dismissedState = dismissedTicketRef.current;
+      if (
+        data.ticket &&
+        dismissedState &&
+        data.ticket.id === dismissedState.ticketId &&
+        data.ticket.messages.length <= dismissedState.messageCount
+      ) {
+        return;
+      }
+
       if (data.ticket) {
         syncTicketState(data.ticket);
       }
@@ -283,8 +296,25 @@ export default function SupportScreen() {
   const syncTicketState = (ticket: SupportTicket) => {
     setTicketId(ticket.id);
     setTicketStatus(ticket.status);
+    if (
+      dismissedTicketRef.current &&
+      (dismissedTicketRef.current.ticketId !== ticket.id ||
+        ticket.messages.length > dismissedTicketRef.current.messageCount)
+    ) {
+      dismissedTicketRef.current = null;
+      void AsyncStorage.removeItem(DISMISSED_SUPPORT_TICKET_KEY);
+    }
     const ticketMessages = ticket.messages.map(mapTicketMessageToChat);
-    setMessages(ticketMessages.length > 0 ? ticketMessages : [starterMessage]);
+    setMessages((current) => {
+      if (ticketMessages.length === 0) {
+        return current.length > 0 ? current : [starterMessage];
+      }
+
+      const baseMessages =
+        current.length === 1 && current[0]?.id === starterMessage.id ? [] : current;
+
+      return mergeConversationMessages(baseMessages, ticketMessages);
+    });
   };
 
   const appendTransientMessage = (role: ChatRole, text: string) => {
@@ -313,11 +343,22 @@ export default function SupportScreen() {
 
   const clearChat = async () => {
     try {
+      if (ticketId) {
+        const dismissedState: DismissedSupportTicketState = {
+          ticketId,
+          messageCount: messages.filter((message) => message.role !== "assistant" || message.createdAt).length,
+        };
+        dismissedTicketRef.current = dismissedState;
+        await AsyncStorage.setItem(
+          DISMISSED_SUPPORT_TICKET_KEY,
+          JSON.stringify(dismissedState)
+        );
+      }
       await AsyncStorage.removeItem(SUPPORT_CHAT_STORAGE_KEY);
     } finally {
       setTicketId(null);
       setTicketStatus(null);
-      setMessages([starterMessage]);
+      setMessages([]);
       showToast({
         type: "success",
         title: "Chat cleared",
@@ -327,7 +368,8 @@ export default function SupportScreen() {
 
   const escalateToHuman = async (
     message: string,
-    reason = "User requested human support"
+    reason = "User requested human support",
+    options?: { forceNewTicket?: boolean }
   ) => {
     const token = await getToken();
     if (!token) {
@@ -343,6 +385,7 @@ export default function SupportScreen() {
           reason,
           intent: "unknown",
           aiReply: "ESCALATE_TO_AGENT",
+          forceNew: Boolean(options?.forceNewTicket),
         },
       });
 
@@ -382,7 +425,10 @@ export default function SupportScreen() {
     syncTicketState(response.ticket);
   };
 
-  const queryAssistant = async (text: string): Promise<AssistantQueryResult> => {
+  const queryAssistant = async (
+    text: string,
+    options?: { forceNewTicket?: boolean }
+  ): Promise<AssistantQueryResult> => {
     const token = await getToken();
     if (!token) {
       throw new Error("SESSION_EXPIRED");
@@ -391,7 +437,10 @@ export default function SupportScreen() {
     const supportData = await apiRequest<SupportQueryResponse>("/support/query", {
       method: "POST",
       token,
-      body: { message: text },
+      body: {
+        message: text,
+        forceNew: Boolean(options?.forceNewTicket),
+      },
     });
 
     if (supportData.response === "ESCALATE_TO_AGENT" || supportData.escalated) {
@@ -403,7 +452,11 @@ export default function SupportScreen() {
         };
       }
 
-      await escalateToHuman(text, String(supportData.reason || "Escalated from support query"));
+      await escalateToHuman(
+        text,
+        String(supportData.reason || "Escalated from support query"),
+        options
+      );
       return {
         escalated: true,
         handledInTicket: true,
@@ -422,6 +475,13 @@ export default function SupportScreen() {
       return;
     }
 
+    const forceNewTicket = Boolean(!ticketId && dismissedTicketRef.current);
+
+    if (forceNewTicket) {
+      dismissedTicketRef.current = null;
+      await AsyncStorage.removeItem(DISMISSED_SUPPORT_TICKET_KEY);
+    }
+
     setInput("");
     setMessages((prev) => [
       ...prev,
@@ -435,8 +495,13 @@ export default function SupportScreen() {
     setLoading(true);
 
     try {
+      if (ticketId) {
+        await sendTicketMessage(text);
+        return;
+      }
+
       setAiTyping(true);
-      const assistantResult = await queryAssistant(text);
+      const assistantResult = await queryAssistant(text, { forceNewTicket });
 
       if (assistantResult.escalated) {
         return;
@@ -464,6 +529,13 @@ export default function SupportScreen() {
       return;
     }
 
+    const forceNewTicket = Boolean(dismissedTicketRef.current);
+
+    if (forceNewTicket) {
+      dismissedTicketRef.current = null;
+      await AsyncStorage.removeItem(DISMISSED_SUPPORT_TICKET_KEY);
+    }
+
     const text = input.trim() || "User requested to connect with support team";
     setInput("");
     setLoading(true);
@@ -477,7 +549,9 @@ export default function SupportScreen() {
           time: toTimeLabel(),
         },
       ]);
-      await escalateToHuman(text);
+      await escalateToHuman(text, "User requested human support", {
+        forceNewTicket,
+      });
     } finally {
       setLoading(false);
     }
@@ -506,7 +580,8 @@ export default function SupportScreen() {
 
   const restingBottom = insets.bottom + APP_TAB_BAR_HEIGHT + 18;
   const inputBottom = keyboardHeight > 0 ? keyboardHeight : restingBottom;
-  const listBottomPadding = INPUT_BAR_BASE_HEIGHT + restingBottom + (aiTyping ? 42 : 0);
+  const listBottomPadding =
+    INPUT_BAR_BASE_HEIGHT + inputBottom + (aiTyping ? 42 : 0);
 
   const refreshConversation = async () => {
     try {
@@ -524,64 +599,104 @@ export default function SupportScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-      <View style={styles.container}>
-        <Text style={styles.header}>{ticketId ? "Live Support Chat" : "Support Assistant"}</Text>
-        <Text style={styles.subheader}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.background }]}
+      edges={["top", "left", "right"]}
+    >
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <View
+          style={[
+            styles.backgroundGlowTop,
+            { backgroundColor: theme.primarySoft, opacity: isDark ? 0.22 : 0.9 },
+          ]}
+        />
+        <View
+          style={[
+            styles.backgroundGlowBottom,
+            { backgroundColor: theme.primarySoft, opacity: isDark ? 0.14 : 0.4 },
+          ]}
+        />
+
+        <View style={styles.headerWrap}>
+          <View style={[styles.headerIcon, { backgroundColor: theme.primarySoft }]}>
+            <MaterialIcons name="support-agent" size={22} color={theme.primary} />
+          </View>
+          <View style={styles.headerCopy}>
+            <Text style={[styles.header, { color: theme.text }]}>
+              {ticketId ? "Live Support Chat" : "Support Assistant"}
+            </Text>
+            <Text style={[styles.subheader, { color: theme.textMuted }]}>
           {ticketId
             ? `AI first, live support active${ticketStatus ? ` - ${ticketStatus}` : ""}`
             : "Live AI help for orders, pricing, and delivery updates."}
-        </Text>
-        <TouchableOpacity style={styles.clearButton} onPress={clearChat}>
-          <Text style={styles.clearButtonText}>
-            {ticketId ? "Clear Local Chat" : "Clear Chat"}
-          </Text>
-        </TouchableOpacity>
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.clearButton} onPress={clearChat}>
+            <Text style={[styles.clearButtonText, { color: theme.primary }]}>
+              {ticketId ? "Clear Chat" : "Clear Chat"}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-	        <FlatList
-	          ref={listRef}
-	          data={messages}
-	          keyExtractor={(item) => item.id}
-	          contentContainerStyle={[styles.messages, { paddingBottom: listBottomPadding }]}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
+		        <FlatList
+		          ref={listRef}
+		          data={messages}
+              style={styles.list}
+		          keyExtractor={(item) => item.id}
+		          contentContainerStyle={[styles.messages, { paddingBottom: listBottomPadding }]}
+              keyboardDismissMode="none"
+              keyboardShouldPersistTaps="always"
+	            refreshControl={
+	              <RefreshControl
+	                refreshing={refreshing}
                 onRefresh={() => {
                   void refreshConversation();
                 }}
-                tintColor={colors.primary}
-              />
-            }
-            ListHeaderComponent={
-              !ticketId && messages.length <= 1 ? (
-                <View style={styles.emptyState}>
-                  <EmptyStateAnimation icon="support-agent" />
-                  <Text style={styles.emptyStateTitle}>Support is ready</Text>
-                  <Text style={styles.emptyStateCopy}>
-                    Ask anything about order status, pricing, pickups, or request a live agent.
-                  </Text>
-                </View>
-              ) : null
-            }
-	          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-	          keyboardShouldPersistTaps="handled"
-	          renderItem={({ item }) => (
-	            <View
+	                tintColor={theme.primary}
+	              />
+		            }
+	            ListHeaderComponent={
+		              !ticketId && messages.length <= 1 ? (
+	                <View
+                    style={[
+                      styles.emptyState,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+	                  <EmptyStateAnimation icon="support-agent" />
+	                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>
+                      Support is ready
+                    </Text>
+	                  <Text style={[styles.emptyStateCopy, { color: theme.textMuted }]}>
+	                    Ask anything about order status, pricing, pickups, or request a live agent.
+	                  </Text>
+	                </View>
+		              ) : null
+		            }
+			          renderItem={({ item }) => (
+		            <View
 	              style={[
 	                styles.messageRow,
 	                item.role === "user" ? styles.userWrap : styles.assistantWrap,
               ]}
             >
-              {item.role !== "user" ? (
-                <View
-                  style={[
-                    styles.avatar,
-                    item.role === "admin" ? styles.adminAvatar : styles.assistantAvatar,
-                  ]}
-                >
-                  <Text style={styles.avatarText}>{item.role === "admin" ? "AD" : "AI"}</Text>
-                </View>
-              ) : null}
+	              {item.role !== "user" ? (
+	                <View
+	                  style={[
+	                    styles.avatar,
+	                    item.role === "admin"
+                        ? [styles.adminAvatar, { backgroundColor: theme.primarySoft }]
+                        : [styles.assistantAvatar, { backgroundColor: theme.surfaceAlt }],
+	                  ]}
+	                >
+	                  <Text style={[styles.avatarText, { color: theme.primary }]}>
+                      {item.role === "admin" ? "AD" : "AI"}
+                    </Text>
+	                </View>
+	              ) : null}
 		              <Animated.View
 		                entering={FadeInDown.duration(180)}
 		                style={[
@@ -591,36 +706,67 @@ export default function SupportScreen() {
 		              >
 		                <ChatBubble message={item} />
 		              </Animated.View>
-	              {item.role === "user" ? (
-	                <View style={[styles.avatar, styles.userAvatar]}>
-                  <Text style={styles.userAvatarText}>You</Text>
-                </View>
-              ) : null}
+		              {item.role === "user" ? (
+		                <View style={[styles.avatar, styles.userAvatar, { backgroundColor: theme.primary }]}>
+	                  <Text style={styles.userAvatarText}>You</Text>
+	                </View>
+	              ) : null}
             </View>
           )}
         />
 
-        <View style={[styles.composerArea, { bottom: inputBottom }]}>
-	          {aiTyping ? (
-	            <View style={styles.typingWrap}>
-	              <View style={[styles.avatar, styles.assistantAvatar]}>
-	                <Text style={styles.avatarText}>AI</Text>
-	              </View>
-	              <View style={styles.typingBubble}>
-	                <Text style={styles.typingText}>Typing...</Text>
-	              </View>
-	            </View>
-          ) : null}
+	        <View style={[styles.composerArea, { bottom: inputBottom }]}>
+		          {aiTyping ? (
+		            <View style={styles.typingWrap}>
+		              <View style={[styles.avatar, styles.assistantAvatar, { backgroundColor: theme.surfaceAlt }]}>
+		                <Text style={[styles.avatarText, { color: theme.primary }]}>AI</Text>
+		              </View>
+		              <View
+                    style={[
+                      styles.typingBubble,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+		                <Text style={[styles.typingText, { color: theme.textMuted }]}>Typing...</Text>
+		              </View>
+		            </View>
+	          ) : null}
 
-          <View style={styles.inputSection}>
-            <View style={styles.inputRow}>
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder={ticketId ? "Message support team..." : "Ask something..."}
-                style={styles.input}
-                editable={!loading}
-                multiline
+	          <View
+              style={[
+                styles.inputSection,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.glass,
+                },
+              ]}
+            >
+	            <View
+                style={[
+                  styles.inputRow,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+	              <TextInput
+	                value={input}
+	                onChangeText={setInput}
+	                placeholder={ticketId ? "Message support team..." : "Ask something..."}
+                  placeholderTextColor={theme.textMuted}
+	                style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? theme.background : "#F8FAFC",
+                      color: theme.text,
+                    },
+                  ]}
+	                editable={!loading}
+	                multiline
                 returnKeyType="send"
                 blurOnSubmit={false}
                 onSubmitEditing={() => {
@@ -628,10 +774,14 @@ export default function SupportScreen() {
                 }}
               />
 
-              <TouchableOpacity
-                style={[styles.sendButton, loading && styles.buttonDisabled]}
-                onPress={() => {
-                  void sendMessage();
+	              <TouchableOpacity
+	                style={[
+                    styles.sendButton,
+                    { backgroundColor: theme.primary },
+                    loading && styles.buttonDisabled,
+                  ]}
+	                onPress={() => {
+	                  void sendMessage();
                 }}
                 disabled={loading}
               >
@@ -642,27 +792,41 @@ export default function SupportScreen() {
                 )}
               </TouchableOpacity>
             </View>
-            {!ticketId ? (
-              <TouchableOpacity
-                style={[styles.escalateButton, loading && styles.buttonDisabled]}
-                disabled={loading}
-                onPress={() => {
-                  void handleEscalatePress();
-                }}
-              >
-                <Text style={styles.escalateText}>Connect Support Team</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.escalateButton, loading && styles.buttonDisabled]}
-                disabled={loading}
-                onPress={() => {
-                  void handleDirectAdminMessage();
-                }}
-              >
-                <Text style={styles.escalateText}>Send Directly to Admin</Text>
-              </TouchableOpacity>
-            )}
+	            {!ticketId ? (
+	              <TouchableOpacity
+	                style={[
+                    styles.escalateButton,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: theme.surface,
+                    },
+                    loading && styles.buttonDisabled,
+                  ]}
+	                disabled={loading}
+	                onPress={() => {
+	                  void handleEscalatePress();
+	                }}
+	              >
+	                <Text style={[styles.escalateText, { color: theme.text }]}>Connect Support Team</Text>
+	              </TouchableOpacity>
+	            ) : (
+	              <TouchableOpacity
+	                style={[
+                    styles.escalateButton,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: theme.surface,
+                    },
+                    loading && styles.buttonDisabled,
+                  ]}
+	                disabled={loading}
+	                onPress={() => {
+	                  void handleDirectAdminMessage();
+	                }}
+	              >
+	                <Text style={[styles.escalateText, { color: theme.text }]}>Send Directly to Admin</Text>
+	              </TouchableOpacity>
+	            )}
           </View>
         </View>
       </View>
@@ -673,57 +837,86 @@ export default function SupportScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+  },
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -90,
+    right: -36,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+  },
+  backgroundGlowBottom: {
+    position: "absolute",
+    bottom: 180,
+    left: -80,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+  },
+  headerWrap: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: spacing.lg,
+    paddingTop: 14,
+    marginBottom: 14,
+  },
+  headerIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  headerCopy: {
+    flex: 1,
   },
   header: {
     fontSize: 22,
     fontFamily: typography.bold,
-    color: colors.textPrimary,
-    paddingHorizontal: spacing.lg,
-    paddingTop: 14,
     marginBottom: 4,
   },
   subheader: {
     fontSize: 13,
-    color: colors.textSecondary,
     fontFamily: typography.body,
-    paddingHorizontal: spacing.lg,
-    marginBottom: 8,
   },
   clearButton: {
-    alignSelf: "flex-end",
-    marginRight: spacing.lg,
-    marginBottom: 8,
-    paddingVertical: 6,
+    marginLeft: 10,
+    paddingVertical: 8,
   },
   clearButtonText: {
-    color: colors.textSecondary,
     fontSize: 12,
     fontFamily: typography.semibold,
+  },
+  list: {
+    flex: 1,
   },
   messages: {
     padding: spacing.md,
     gap: 10,
+    paddingBottom: spacing.lg,
   },
   emptyState: {
     alignItems: "center",
+    borderWidth: 1,
+    borderRadius: radius.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    ...shadows.card,
   },
   emptyStateTitle: {
     fontSize: 18,
     fontFamily: typography.bold,
-    color: colors.textPrimary,
     marginBottom: 6,
   },
   emptyStateCopy: {
     fontSize: 13,
     lineHeight: 19,
-    color: colors.textSecondary,
     textAlign: "center",
     maxWidth: 280,
   },
@@ -760,21 +953,17 @@ const styles = StyleSheet.create({
   },
   assistantAvatar: {
     marginRight: 6,
-    backgroundColor: "#D9D1C7",
-  },
-  adminAvatar: {
-    marginRight: 6,
-    backgroundColor: "#F4D35E",
-  },
-  userAvatar: {
-    marginLeft: 6,
-    backgroundColor: "#111111",
-  },
-  avatarText: {
-    color: "#3E352B",
-    fontSize: 11,
-    fontFamily: typography.bold,
-  },
+	  },
+	  adminAvatar: {
+	    marginRight: 6,
+	  },
+	  userAvatar: {
+	    marginLeft: 6,
+	  },
+	  avatarText: {
+	    fontSize: 11,
+	    fontFamily: typography.bold,
+	  },
   userAvatarText: {
     color: "#FFFFFF",
     fontSize: 9,
@@ -784,6 +973,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
+    paddingTop: spacing.xs,
   },
   typingWrap: {
     paddingHorizontal: 16,
@@ -791,53 +981,49 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
   },
-  typingBubble: {
-    maxWidth: "60%",
-    borderRadius: radius.lg - 2,
+	  typingBubble: {
+	    maxWidth: "60%",
+	    borderRadius: radius.lg - 2,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    backgroundColor: "#FFFFFF",
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#E8DED1",
-  },
-  typingText: {
-    color: colors.textSecondary,
-    fontFamily: typography.body,
-    fontStyle: "italic",
-  },
-  inputSection: {
-    borderTopWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#FFFFFF",
-    padding: spacing.sm,
-    gap: 10,
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.sm,
-    backgroundColor: "#FFFFFF",
-    borderRadius: radius.md,
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 20,
-    paddingHorizontal: 16,
+	    borderBottomLeftRadius: 4,
+	    borderWidth: 1,
+	  },
+	  typingText: {
+	    fontFamily: typography.body,
+	    fontStyle: "italic",
+	  },
+	  inputSection: {
+	    borderTopWidth: 1,
+	    padding: spacing.sm,
+	    gap: 10,
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: -2 },
+      elevation: 6,
+	  },
+	  inputRow: {
+	    flexDirection: "row",
+	    alignItems: "center",
+	    padding: spacing.sm,
+      borderWidth: 1,
+	    borderRadius: radius.md,
+	    gap: 10,
+	  },
+	  input: {
+	    flex: 1,
+	    borderRadius: 20,
+	    paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
     fontFamily: typography.body,
-    color: colors.textPrimary,
-    maxHeight: 110,
-    minHeight: 40,
-  },
-  sendButton: {
-    marginLeft: 10,
-    backgroundColor: colors.success,
-    minWidth: 58,
-    height: 40,
+	    maxHeight: 110,
+	    minHeight: 40,
+	  },
+	  sendButton: {
+	    marginLeft: 10,
+	    minWidth: 58,
+	    height: 40,
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
@@ -851,17 +1037,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
     fontSize: 13,
   },
-  escalateButton: {
-    borderWidth: 1,
-    borderColor: "#222222",
-    borderRadius: radius.md,
-    alignItems: "center",
-    paddingVertical: 12,
-    backgroundColor: "#F7EFE3",
-    ...shadows.card,
-  },
-  escalateText: {
-    color: "#222222",
-    fontFamily: typography.semibold,
-  },
+	  escalateButton: {
+	    borderWidth: 1,
+	    borderRadius: radius.md,
+	    alignItems: "center",
+	    paddingVertical: 12,
+	    ...shadows.card,
+	  },
+	  escalateText: {
+	    fontFamily: typography.semibold,
+	  },
 });

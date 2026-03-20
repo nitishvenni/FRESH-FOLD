@@ -480,12 +480,15 @@ const upsertEscalatedTicket = async (params: {
   confidenceScore: number;
   orderId: any;
   changedBy: "ai" | "system";
+  forceNew?: boolean;
 }) => {
   const now = new Date();
-  const existingTicket = await SupportTicket.findOne({
-    userId: params.userId,
-    status: { $ne: "resolved" },
-  }).sort({ updatedAt: -1 });
+  const existingTicket = params.forceNew
+    ? null
+    : await SupportTicket.findOne({
+        userId: params.userId,
+        status: { $ne: "resolved" },
+      }).sort({ updatedAt: -1 });
 
   if (existingTicket) {
     normalizeTicketDocument(existingTicket);
@@ -1219,6 +1222,7 @@ app.get("/orders", authMiddleware, async (req: AuthRequest, res) => {
 app.post("/support/query", authMiddleware, supportQueryLimiter, async (req: AuthRequest, res) => {
   try {
     const message = String(req.body?.message || "").trim();
+    const forceNew = Boolean(req.body?.forceNew);
     if (!message) {
       return res.status(400).json({ message: "Support message is required" });
     }
@@ -1251,6 +1255,7 @@ app.post("/support/query", authMiddleware, supportQueryLimiter, async (req: Auth
         confidenceScore,
         orderId: latestOrder?._id || null,
         changedBy: "ai",
+        forceNew,
       });
 
       await SupportInteraction.create({
@@ -1349,6 +1354,7 @@ app.post("/support/escalate", authMiddleware, supportEscalateLimiter, async (req
     const reason = String(req.body?.reason || "Manual escalation requested").trim();
     const intent = String(req.body?.intent || "unknown").trim();
     const aiReply = String(req.body?.aiReply || "ESCALATE_TO_AGENT").trim();
+    const forceNew = Boolean(req.body?.forceNew);
     const confidenceScore = Number.isFinite(Number(req.body?.confidenceScore))
       ? Math.max(0, Math.min(1, Number(req.body?.confidenceScore)))
       : 0.5;
@@ -1377,6 +1383,7 @@ app.post("/support/escalate", authMiddleware, supportEscalateLimiter, async (req
       confidenceScore,
       orderId: latestOrder?._id || null,
       changedBy: "system",
+      forceNew,
     });
 
     await SupportInteraction.create({

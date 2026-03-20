@@ -71,7 +71,7 @@ export default function ActiveOrderCard({
         </Text>
 
         <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: theme.text }]}
+          style={[styles.primaryButton, { backgroundColor: theme.primary }]}
           onPress={onSchedulePickup}
         >
           <Text style={styles.primaryButtonText}>Schedule Pickup</Text>
@@ -141,7 +141,7 @@ export default function ActiveOrderCard({
       </Text>
 
       <TouchableOpacity
-        style={[styles.primaryButton, { backgroundColor: theme.text }]}
+        style={[styles.primaryButton, { backgroundColor: theme.primary }]}
         onPress={onTrackOrder}
       >
         <Text style={styles.primaryButtonText}>Track Order</Text>

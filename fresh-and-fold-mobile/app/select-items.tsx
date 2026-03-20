@@ -164,7 +164,7 @@ export default function SelectItems() {
 
         <TouchableOpacity
           disabled={totalItems === 0}
-          style={[styles.continueButton, { backgroundColor: theme.text }, totalItems === 0 && styles.continueButtonDisabled]}
+          style={[styles.continueButton, { backgroundColor: theme.primary }, totalItems === 0 && styles.continueButtonDisabled]}
           activeOpacity={0.9}
           onPress={() =>
             router.push({

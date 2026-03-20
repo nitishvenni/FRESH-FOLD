@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -59,6 +60,7 @@ export default function AddAddress() {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
   const { service, items, date, slot } = useLocalSearchParams();
+  const scrollRef = useRef<ScrollView>(null);
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -66,6 +68,28 @@ export default function AddAddress() {
   const [city, setCity] = useState("");
   const [pincode, setPincode] = useState("");
   const [saving, setSaving] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      });
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const validateAddress = () => {
     const normalizedName = fullName.trim();
@@ -157,11 +181,15 @@ export default function AddAddress() {
       >
         <View style={styles.flex}>
           <ScrollView
+            ref={scrollRef}
             showsVerticalScrollIndicator={false}
+            scrollEnabled={keyboardHeight > 0}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="none"
             contentContainerStyle={{
               paddingTop: insets.top + spacing.md,
               paddingHorizontal: spacing.lg,
-              paddingBottom: 140 + insets.bottom,
+              paddingBottom: 140 + insets.bottom + (keyboardHeight > 0 ? 24 : 0),
             }}
           >
             <Text style={[styles.title, { color: theme.text }]}>Add Address</Text>

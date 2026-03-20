@@ -12,21 +12,18 @@ import { triggerImpactHaptic } from "../utils/haptics";
 import { createOrder, getOrderPreview, getOrders } from "../services/orderService";
 import { createPaymentOrder, reportPaymentFailure, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
+import { showToast } from "../utils/toast";
 
 const getPaymentFailureMessage = (error: any) => {
   const raw = String(error?.description || error?.message || "")
     .trim()
     .toLowerCase();
 
-  if (raw.includes("cancel")) {
-    return "You cancelled the payment. No order was created.";
+  if (raw.includes("cancel") || raw.includes("dismiss") || raw.includes("back")) {
+    return "Payment was cancelled. No order was created.";
   }
 
-  return (
-    error?.description ||
-    error?.message ||
-    "Payment was not completed. No order was created."
-  );
+  return "Payment failed. Please try again.";
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -279,7 +276,11 @@ export default function Payment() {
       ) {
         handleError(error);
       } else {
-        handleError(new Error(getPaymentFailureMessage(error)));
+        showToast({
+          type: "error",
+          title: "Payment failed",
+          message: getPaymentFailureMessage(error),
+        });
       }
     } finally {
       setProcessingPayment(false);

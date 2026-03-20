@@ -188,7 +188,7 @@ export default function SelectAddress() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
         <TouchableOpacity
-          style={[styles.continueButton, { backgroundColor: theme.text }, !selected && styles.continueButtonDisabled]}
+          style={[styles.continueButton, { backgroundColor: theme.primary }, !selected && styles.continueButtonDisabled]}
           disabled={!selected}
           activeOpacity={0.9}
           onPress={async () => {
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     height: 58,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

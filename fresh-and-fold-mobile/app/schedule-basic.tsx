@@ -117,7 +117,7 @@ export default function ScheduleBasic() {
         <TouchableOpacity
           style={[
             styles.continueButton,
-            { backgroundColor: theme.text },
+            { backgroundColor: theme.primary },
             (!selectedDate || !selectedSlot) && styles.continueButtonDisabled,
           ]}
           disabled={!selectedDate || !selectedSlot}

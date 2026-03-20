@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
-import { colors, radius, typography } from "../theme/theme";
+import { radius, typography } from "../theme/theme";
+import { useAppTheme } from "../hooks/useAppTheme";
 
 type ChatBubbleProps = {
   message: {
@@ -10,6 +11,7 @@ type ChatBubbleProps = {
 };
 
 export default function ChatBubble({ message }: ChatBubbleProps) {
+  const { theme, isDark } = useAppTheme();
   const isUser = message.role === "user";
   const isAdmin = message.role === "admin";
 
@@ -17,17 +19,46 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
     <View
       style={[
         styles.container,
-        isUser ? styles.user : isAdmin ? styles.admin : styles.bot,
+        isUser
+          ? [styles.user, { backgroundColor: theme.primary }]
+          : isAdmin
+            ? [
+                styles.admin,
+                {
+                  backgroundColor: isDark ? theme.surfaceAlt : theme.primarySoft,
+                  borderColor: theme.primary,
+                },
+              ]
+            : [
+                styles.bot,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ],
       ]}
     >
-      <Text style={[styles.text, isUser ? styles.userText : isAdmin ? styles.adminText : styles.botText]}>
+      <Text
+        style={[
+          styles.text,
+          isUser
+            ? styles.userText
+            : {
+                color: theme.text,
+              },
+        ]}
+      >
         {message.text}
       </Text>
       {message.time ? (
         <Text
           style={[
             styles.time,
-            isUser ? styles.userTime : isAdmin ? styles.adminTime : styles.botTime,
+            isUser
+              ? styles.userTime
+              : {
+                  color: theme.textMuted,
+                },
           ]}
         >
           {message.time}
@@ -47,7 +78,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg - 2,
   },
   user: {
-    backgroundColor: colors.primary,
     borderBottomRightRadius: 4,
   },
   bot: {
@@ -70,12 +100,6 @@ const styles = StyleSheet.create({
   userText: {
     color: "#FFFFFF",
   },
-  botText: {
-    color: colors.textPrimary,
-  },
-  adminText: {
-    color: "#4A3A00",
-  },
   time: {
     fontSize: 10,
     marginTop: 4,
@@ -85,11 +109,5 @@ const styles = StyleSheet.create({
   },
   userTime: {
     color: "rgba(255,255,255,0.75)",
-  },
-  botTime: {
-    color: "rgba(17,17,17,0.45)",
-  },
-  adminTime: {
-    color: "rgba(74,58,0,0.55)",
   },
 });
