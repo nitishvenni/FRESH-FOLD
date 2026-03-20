@@ -146,9 +146,20 @@ app.use(
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
+  const mongoStateMap: Record<number, string> = {
+    0: "disconnected",
+    1: "connected",
+    2: "connecting",
+    3: "disconnecting",
+  };
+
   res.json({
     status: "ok",
     app: "Fresh & Fold Backend",
+    database: {
+      state: mongoStateMap[mongoose.connection.readyState] || "unknown",
+      connected: mongoose.connection.readyState === 1,
+    },
     payment: {
       mockPayments: MOCK_PAYMENTS,
       razorpayConfigured: Boolean(razorpayKeyId && razorpayKeySecret),
@@ -501,6 +512,10 @@ app.post("/auth/send-otp", async (req, res) => {
 
     if (!/^\d{10}$/.test(mobile)) {
       return res.status(400).json({ message: "Invalid mobile number" });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: "Database unavailable" });
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
