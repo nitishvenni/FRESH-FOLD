@@ -70,6 +70,10 @@ const SERVICE_TURNAROUND: Record<string, string> = {
 const MOCK_PAYMENTS = String(process.env.MOCK_PAYMENTS || "").toLowerCase() === "true";
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+const msg91AuthKey = String(process.env.MSG91_AUTH_KEY || "").trim();
+const msg91TemplateId = String(process.env.MSG91_TEMPLATE_ID || "").trim();
+const msg91CountryCode = String(process.env.MSG91_COUNTRY_CODE || "91").trim();
+const msg91OtpEnabled = Boolean(msg91AuthKey && msg91TemplateId);
 const razorpayClient =
   razorpayKeyId && razorpayKeySecret
     ? new Razorpay({
@@ -93,6 +97,54 @@ const supportEscalateLimiter = createRateLimit({
 const SUPPORT_CONFIDENCE_THRESHOLD = 0.7;
 const RESPONSE_SLA_MINUTES = 15;
 const RESOLUTION_SLA_MINUTES = 240;
+
+const buildMsg91Mobile = (mobile: string) => `${msg91CountryCode}${mobile}`;
+
+const sendOtpViaMsg91 = async (mobile: string) => {
+  const params = new URLSearchParams({
+    template_id: msg91TemplateId,
+    mobile: buildMsg91Mobile(mobile),
+    authkey: msg91AuthKey,
+  });
+
+  const response = await fetch(`https://control.msg91.com/api/v5/otp?${params.toString()}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, any>;
+
+  if (!response.ok) {
+    throw new Error(String(data?.message || "MSG91 send OTP request failed"));
+  }
+
+  return data;
+};
+
+const verifyOtpViaMsg91 = async (mobile: string, otp: string) => {
+  const params = new URLSearchParams({
+    otp,
+    mobile: buildMsg91Mobile(mobile),
+  });
+
+  const response = await fetch(`https://control.msg91.com/api/v5/otp/verify?${params.toString()}`, {
+    method: "GET",
+    headers: {
+      authkey: msg91AuthKey,
+    },
+  });
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, any>;
+  const verifiedMessage = String(data?.message || "").toLowerCase();
+
+  if (!response.ok || !verifiedMessage.includes("verified")) {
+    throw new Error(String(data?.message || "MSG91 OTP verification failed"));
+  }
+
+  return data;
+};
 
 const app = express();
 const server = http.createServer(app);
@@ -159,6 +211,10 @@ app.get("/health", (_req, res) => {
     database: {
       state: mongoStateMap[mongoose.connection.readyState] || "unknown",
       connected: mongoose.connection.readyState === 1,
+    },
+    otp: {
+      provider: msg91OtpEnabled ? "msg91" : "local",
+      smsConfigured: msg91OtpEnabled,
     },
     payment: {
       mockPayments: MOCK_PAYMENTS,
@@ -518,21 +574,29 @@ app.post("/auth/send-otp", async (req, res) => {
       return res.status(503).json({ message: "Database unavailable" });
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-
     let user = await User.findOne({ mobile });
 
     if (!user) {
       user = new User({ mobile });
     }
 
-    user.otp = otp;
-    user.otpExpires = otpExpires;
+    if (msg91OtpEnabled) {
+      user.otp = null;
+      user.otpExpires = null;
+      await user.save();
+      await sendOtpViaMsg91(mobile);
+      console.log(`OTP sent via MSG91 for ${mobile}`);
+    } else {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
 
-    await user.save();
+      user.otp = otp;
+      user.otpExpires = otpExpires;
 
-    console.log(`OTP for ${mobile}: ${otp}`);
+      await user.save();
+
+      console.log(`OTP for ${mobile}: ${otp}`);
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -542,25 +606,35 @@ app.post("/auth/send-otp", async (req, res) => {
 });
 
 app.post("/auth/verify-otp", async (req, res) => {
-  const { mobile, otp } = req.body;
-  
-  if (!mobile || !otp) {
-    return res.status(400).json({ message: "Mobile and OTP required" });
-  }
-  
-  const user = await User.findOne({ mobile });
-  
-  if (!user) {
-    return res.status(400).json({ message: "User not found" });
-  }
-  
-  if (user.otp !== otp) {
-    return res.status(400).json({ message: "Invalid OTP" });
-  }
-  
-  if (!user.otpExpires || user.otpExpires < new Date()) {
-    return res.status(400).json({ message: "OTP expired" });
-  }
+  try {
+    const mobile = String(req.body?.mobile || "").trim();
+    const otp = String(req.body?.otp || "").trim();
+
+    if (!mobile || !otp) {
+      return res.status(400).json({ message: "Mobile and OTP required" });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: "Database unavailable" });
+    }
+
+    const user = await User.findOne({ mobile });
+
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
+
+    if (msg91OtpEnabled) {
+      await verifyOtpViaMsg91(mobile, otp);
+    } else {
+      if (user.otp !== otp) {
+        return res.status(400).json({ message: "Invalid OTP" });
+      }
+
+      if (!user.otpExpires || user.otpExpires < new Date()) {
+        return res.status(400).json({ message: "OTP expired" });
+      }
+    }
   
   
     // Clear OTP
@@ -579,7 +653,11 @@ app.post("/auth/verify-otp", async (req, res) => {
       success: true,
       token,
     });
-  });
+  } catch (error) {
+    console.error("verify-otp error:", error);
+    res.status(500).json({ message: "OTP verification failed" });
+  }
+});
 
 const adminMiddleware = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
