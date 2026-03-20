@@ -496,32 +496,34 @@ const upsertEscalatedTicket = async (params: {
 };
 
 app.post("/auth/send-otp", async (req, res) => {
-  const { mobile } = req.body;
+  try {
+    const mobile = String(req.body?.mobile || "").trim();
 
-  if (!mobile || mobile.length !== 10) {
-    return res.status(400).json({ message: "Invalid mobile number" });
+    if (!/^\d{10}$/.test(mobile)) {
+      return res.status(400).json({ message: "Invalid mobile number" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+
+    let user = await User.findOne({ mobile });
+
+    if (!user) {
+      user = new User({ mobile });
+    }
+
+    user.otp = otp;
+    user.otpExpires = otpExpires;
+
+    await user.save();
+
+    console.log(`OTP for ${mobile}: ${otp}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("send-otp error:", error);
+    res.status(500).json({ message: "Failed to send OTP" });
   }
-
-  // Generate 4-digit OTP
- const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-
-  const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
-
-  let user = await User.findOne({ mobile });
-
-  if (!user) {
-    user = new User({ mobile });
-  }
-
-  user.otp = otp;
-  user.otpExpires = otpExpires;
-
-  await user.save();
-
-  console.log(`OTP for ${mobile}: ${otp}`);
-
-  res.json({ success: true });
 });
 
 app.post("/auth/verify-otp", async (req, res) => {
