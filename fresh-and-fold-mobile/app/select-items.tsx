@@ -25,18 +25,18 @@ type ItemKey =
 type ItemState = Record<ItemKey, number>;
 
 const pricing: Record<ItemKey, number> = {
-  shirt: 30,
-  tshirt: 25,
-  jeans: 60,
-  trousers: 45,
-  dress: 90,
-  jacket: 140,
-  sweater: 70,
-  bedsheet: 120,
-  pillowcover: 35,
-  towel: 40,
-  curtain: 180,
-  blanket: 220,
+  shirt: 20,
+  tshirt: 18,
+  jeans: 40,
+  trousers: 35,
+  dress: 60,
+  jacket: 90,
+  sweater: 50,
+  bedsheet: 70,
+  pillowcover: 20,
+  towel: 22,
+  curtain: 110,
+  blanket: 140,
 };
 
 const clothingItems: Array<{

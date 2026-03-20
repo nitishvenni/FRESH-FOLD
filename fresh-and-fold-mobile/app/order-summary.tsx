@@ -31,18 +31,18 @@ const ITEM_LABELS: Record<string, string> = {
 };
 
 const ITEM_PRICES: Record<string, number> = {
-  shirt: 30,
-  tshirt: 25,
-  jeans: 60,
-  trousers: 45,
-  dress: 90,
-  jacket: 140,
-  sweater: 70,
-  bedsheet: 120,
-  pillowcover: 35,
-  towel: 40,
-  curtain: 180,
-  blanket: 220,
+  shirt: 20,
+  tshirt: 18,
+  jeans: 40,
+  trousers: 35,
+  dress: 60,
+  jacket: 90,
+  sweater: 50,
+  bedsheet: 70,
+  pillowcover: 20,
+  towel: 22,
+  curtain: 110,
+  blanket: 140,
 };
 
 export default function OrderSummaryScreen() {
@@ -70,7 +70,7 @@ export default function OrderSummaryScreen() {
   );
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const fallbackDeliveryCharge = subtotal < 399 ? 40 : 0;
+  const fallbackDeliveryCharge = subtotal < 299 ? 25 : 0;
   const [deliveryCharge, setDeliveryCharge] = useState(fallbackDeliveryCharge);
   const [backendTotal, setBackendTotal] = useState(subtotal + fallbackDeliveryCharge);
   const [pricingRefreshing, setPricingRefreshing] = useState(true);

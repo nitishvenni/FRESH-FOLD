@@ -29,26 +29,26 @@ import {
 } from "./support/promptControl";
 
 const PRICING: Record<string, number> = {
-  shirt: 30,
-  tshirt: 25,
-  jeans: 60,
-  trousers: 45,
-  dress: 90,
-  jacket: 140,
-  sweater: 70,
-  bedsheet: 120,
-  pillowcover: 35,
-  towel: 40,
-  curtain: 180,
-  blanket: 220,
+  shirt: 20,
+  tshirt: 18,
+  jeans: 40,
+  trousers: 35,
+  dress: 60,
+  jacket: 90,
+  sweater: 50,
+  bedsheet: 70,
+  pillowcover: 20,
+  towel: 22,
+  curtain: 110,
+  blanket: 140,
 };
 const SERVICE_MULTIPLIER: Record<string, number> = {
   wash: 1,
-  dry: 1.4,
-  express: 1.2,
+  dry: 1.25,
+  express: 1.15,
 };
-const DELIVERY_CHARGE = 40;
-const FREE_DELIVERY_THRESHOLD = 399;
+const DELIVERY_CHARGE = 25;
+const FREE_DELIVERY_THRESHOLD = 299;
 const CURRENCY = "INR";
 
 const ORDER_STEPS = [
@@ -1145,8 +1145,8 @@ app.post("/support/query", authMiddleware, supportQueryLimiter, async (req: Auth
       "Dry Clean",
       "Express",
     ].join(", ");
-    const pricingRule = "Item-wise pricing with service multipliers (wash x1.0, dry x1.4, express x1.2).";
-    const deliveryPolicy = "Delivery is free for orders >= Rs.399, otherwise Rs.40.";
+    const pricingRule = "Item-wise pricing with service multipliers (wash x1.0, dry x1.25, express x1.15).";
+    const deliveryPolicy = "Delivery is free for orders >= Rs.299, otherwise Rs.25.";
     const workingHours = "Daily 8:00 AM - 9:00 PM.";
 
     const response = buildControlledSupportReply(intent, {

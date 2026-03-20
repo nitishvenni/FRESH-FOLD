@@ -101,24 +101,24 @@ export default function Payment() {
 
   const fallbackSubtotal = Object.keys(parsedItems).reduce((sum, key) => {
     const pricing: Record<string, number> = {
-      shirt: 30,
-      tshirt: 25,
-      jeans: 60,
-      trousers: 45,
-      dress: 90,
-      jacket: 140,
-      sweater: 70,
-      bedsheet: 120,
-      pillowcover: 35,
-      towel: 40,
-      curtain: 180,
-      blanket: 220,
+      shirt: 20,
+      tshirt: 18,
+      jeans: 40,
+      trousers: 35,
+      dress: 60,
+      jacket: 90,
+      sweater: 50,
+      bedsheet: 70,
+      pillowcover: 20,
+      towel: 22,
+      curtain: 110,
+      blanket: 140,
     };
 
     return sum + (pricing[key] || 0) * Number(parsedItems[key]);
   }, 0);
 
-  const fallbackDelivery = fallbackSubtotal < 399 ? 40 : 0;
+  const fallbackDelivery = fallbackSubtotal < 299 ? 25 : 0;
   const [backendTotal, setBackendTotal] = useState<number>(fallbackSubtotal + fallbackDelivery);
   const [pricingRefreshing, setPricingRefreshing] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
