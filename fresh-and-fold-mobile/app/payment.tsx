@@ -10,7 +10,7 @@ import { useAppTheme } from "../hooks/useAppTheme";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { createOrder, getOrderPreview, getOrders } from "../services/orderService";
-import { createPaymentOrder, verifyPayment } from "../services/paymentService";
+import { createPaymentOrder, reportPaymentFailure, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
 
 const getPaymentFailureMessage = (error: any) => {
@@ -176,6 +176,28 @@ export default function Payment() {
     }
   };
 
+  const logFailedPayment = async (details: {
+    paymentOrderId?: string;
+    paymentId?: string;
+    reason: string;
+    metadata?: Record<string, unknown>;
+  }) => {
+    try {
+      await reportPaymentFailure({
+        addressId,
+        items: getOrderItems(),
+        service,
+        paymentOrderId: details.paymentOrderId,
+        paymentId: details.paymentId,
+        totalAmount: backendTotal,
+        reason: details.reason,
+        metadata: details.metadata,
+      });
+    } catch {
+      // Best-effort logging only; checkout UX should use the original payment error.
+    }
+  };
+
   const startRazorpayPayment = async () => {
     const data = await createPaymentOrder({
       addressId,
@@ -183,13 +205,21 @@ export default function Payment() {
       service,
     });
 
-    const paymentResult = data.mock
-      ? {
-          razorpay_payment_id: `pay_mock_${Date.now()}`,
-          razorpay_order_id: data.paymentOrder.id,
-          razorpay_signature: "mock_signature",
-        }
-      : await RazorpayCheckout.open({
+    let paymentResult: {
+      razorpay_payment_id: string;
+      razorpay_order_id: string;
+      razorpay_signature: string;
+    };
+
+    if (data.mock) {
+      paymentResult = {
+        razorpay_payment_id: `pay_mock_${Date.now()}`,
+        razorpay_order_id: data.paymentOrder.id,
+        razorpay_signature: "mock_signature",
+      };
+    } else {
+      try {
+        paymentResult = await RazorpayCheckout.open({
           key: data.keyId,
           amount: data.paymentOrder.amount,
           currency: data.paymentOrder.currency,
@@ -198,6 +228,20 @@ export default function Payment() {
           description: "Laundry order payment",
           theme: { color: "#2563EB" },
         });
+      } catch (error: any) {
+        await logFailedPayment({
+          paymentOrderId: data.paymentOrder.id,
+          paymentId: error?.razorpay_payment_id,
+          reason: getPaymentFailureMessage(error),
+          metadata: {
+            code: error?.code,
+            step: "checkout_open",
+            description: error?.description,
+          },
+        });
+        throw error;
+      }
+    }
 
     const verifyData = await runWithNetworkRetry(() =>
       verifyPayment({

@@ -24,6 +24,19 @@ export type VerifyPaymentResponse = {
   message?: string;
 };
 
+export const reportPaymentFailure = async (payload: {
+  addressId: string | string[] | undefined;
+  items: Array<{ itemName: string; quantity: number }>;
+  service: string | string[] | undefined;
+  paymentOrderId?: string;
+  paymentId?: string;
+  totalAmount?: number;
+  reason: string;
+  metadata?: Record<string, unknown>;
+}) => {
+  return api.post<{ success: boolean }>("/payment/failure", payload);
+};
+
 export const createPaymentOrder = async (payload: {
   addressId: string | string[] | undefined;
   items: Array<{ itemName: string; quantity: number }>;

@@ -18,6 +18,7 @@ import Order from "./models/Order";
 import Address from "./models/Address";
 import SupportTicket from "./models/SupportTicket";
 import SupportInteraction from "./models/SupportInteraction";
+import PaymentAttempt from "./models/PaymentAttempt";
 import { authMiddleware, AuthRequest } from "./middleware/authMiddleware";
 import { createRateLimit } from "./middleware/rateLimit";
 import { sendPushNotification } from "./utils/pushNotifications";
@@ -1056,6 +1057,52 @@ app.post("/payments/create-order", authMiddleware, handleCreatePaymentOrder);
 app.post("/payment/create-order", authMiddleware, handleCreatePaymentOrder);
 app.post("/payments/verify", authMiddleware, handleVerifyPayment);
 app.post("/payment/verify", authMiddleware, handleVerifyPayment);
+app.post("/payments/failure", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { addressId, items, service, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
+
+    await PaymentAttempt.create({
+      userId: req.user.userId,
+      addressId: addressId || null,
+      items: Array.isArray(items) ? items : [],
+      service: String(service || "").trim(),
+      paymentOrderId: String(paymentOrderId || "").trim() || null,
+      paymentId: String(paymentId || "").trim() || null,
+      totalAmount: Number(totalAmount) || 0,
+      reason: String(reason || "Payment failed").trim(),
+      metadata: metadata || null,
+      status: "failed",
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Payment failure logging failed:", error);
+    res.status(500).json({ message: "Failed to log payment failure" });
+  }
+});
+app.post("/payment/failure", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { addressId, items, service, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
+
+    await PaymentAttempt.create({
+      userId: req.user.userId,
+      addressId: addressId || null,
+      items: Array.isArray(items) ? items : [],
+      service: String(service || "").trim(),
+      paymentOrderId: String(paymentOrderId || "").trim() || null,
+      paymentId: String(paymentId || "").trim() || null,
+      totalAmount: Number(totalAmount) || 0,
+      reason: String(reason || "Payment failed").trim(),
+      metadata: metadata || null,
+      status: "failed",
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Payment failure logging failed:", error);
+    res.status(500).json({ message: "Failed to log payment failure" });
+  }
+});
 
 app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
   try {
@@ -1134,7 +1181,7 @@ app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
       paymentId: tokenPayload.paymentId,
       paymentOrderId: tokenPayload.paymentOrderId,
       paymentSignature: tokenPayload.paymentSignature,
-      paymentStatus: "verified",
+      paymentStatus: "paid",
       paidAt: new Date(tokenPayload.paidAt),
       status: "Scheduled",
     });

@@ -29,6 +29,12 @@ export default function OrderTable({
   onSelectOrder: (order: Order) => void;
   selectedOrderId: string | null;
 }) {
+  const paymentStatusStyles: Record<Order["paymentStatus"], { label: string; backgroundColor: string }> = {
+    paid: { label: "Paid", backgroundColor: "#16a34a" },
+    verified: { label: "Verified", backgroundColor: "#0891b2" },
+    failed: { label: "Failed", backgroundColor: "#dc2626" },
+  };
+
   if (loading) {
     return (
       <div style={{ display: "grid", gap: 10 }}>
@@ -58,13 +64,17 @@ export default function OrderTable({
             <th style={thStyle}>Simulate</th>
           </tr>
         </thead>
-        <tbody>
-          {orders.map((order) => (
-            <motion.tr
-              key={order._id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              onClick={() => onSelectOrder(order)}
+	        <tbody>
+	          {orders.map((order) => {
+	            const paymentState =
+	              paymentStatusStyles[order.paymentStatus] || paymentStatusStyles.verified;
+
+	            return (
+	              <motion.tr
+	                key={order._id}
+	              initial={{ opacity: 0 }}
+	              animate={{ opacity: 1 }}
+	              onClick={() => onSelectOrder(order)}
               style={{
                 cursor: "pointer",
                 background: selectedOrderId === order._id ? "rgba(242,169,73,0.09)" : "transparent",
@@ -74,30 +84,30 @@ export default function OrderTable({
               <td style={tdStyle}>{order.service || "-"}</td>
               <td style={tdStyle}>Rs.{order.totalAmount}</td>
               <td style={tdStyle}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span>pay_{order.paymentId ? order.paymentId.slice(-8) : "-"}</span>
-                  <span style={{ ...mutedTextStyle, fontSize: 12 }}>
-                    ord_{order.paymentOrderId ? order.paymentOrderId.slice(-8) : "-"}
-                  </span>
-                </div>
-              </td>
-              <td style={tdStyle}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span
-                    style={{
-                      ...statusBadgeBase,
-                      backgroundColor: "#16a34a",
-                      color: "#fff",
-                      width: "fit-content",
-                    }}
-                  >
-                    {order.paymentStatus === "verified" ? "Paid" : "Unknown"}
-                  </span>
-                  <span style={{ ...mutedTextStyle, fontSize: 12 }}>
-                    {order.paidAt ? new Date(order.paidAt).toLocaleString() : "-"}
-                  </span>
-                </div>
-              </td>
+	                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+	                  <span>pay_{order.paymentId ? order.paymentId.slice(-8) : "-"}</span>
+	                  <span style={{ ...mutedTextStyle, fontSize: 12 }}>
+	                    ord_{order.paymentOrderId ? order.paymentOrderId.slice(-8) : "-"}
+	                  </span>
+	                </div>
+	              </td>
+	              <td style={tdStyle}>
+	                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+	                  <span
+	                    style={{
+	                      ...statusBadgeBase,
+	                      backgroundColor: paymentState.backgroundColor,
+	                      color: "#fff",
+	                      width: "fit-content",
+	                    }}
+	                  >
+	                    {paymentState.label}
+	                  </span>
+	                  <span style={{ ...mutedTextStyle, fontSize: 12 }}>
+	                    {order.paidAt ? new Date(order.paidAt).toLocaleString() : "-"}
+	                  </span>
+	                </div>
+	              </td>
               <td style={tdStyle}>
                 <span style={{ ...statusBadgeBase, ...getOrderStatusStyle(order.status) }}>
                   {order.status}
@@ -134,9 +144,10 @@ export default function OrderTable({
                   Simulate
                 </button>
               </td>
-            </motion.tr>
-          ))}
-        </tbody>
+	              </motion.tr>
+	            );
+	          })}
+	        </tbody>
       </table>
     </div>
   );

@@ -4,7 +4,7 @@ export interface Order {
   totalAmount: number;
   paymentId: string;
   paymentOrderId: string;
-  paymentStatus: "verified";
+  paymentStatus: "paid" | "verified" | "failed";
   paidAt: string;
   status: string;
   createdAt: string;

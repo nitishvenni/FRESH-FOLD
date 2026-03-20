@@ -41,8 +41,8 @@ const orderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["verified"],
-      default: "verified",
+      enum: ["paid", "verified", "failed"],
+      default: "paid",
     },
     paidAt: {
       type: Date,
