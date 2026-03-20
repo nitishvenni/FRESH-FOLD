@@ -1,234 +1,291 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  ScrollView,
-} from "react-native";
-import { useState, useEffect } from "react";
-
+import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useMemo, useState } from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import RazorpayCheckout from "react-native-razorpay";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Card from "../components/Card";
+import PaymentMethodCard from "../components/PaymentMethodCard";
+import { useAppTheme } from "../hooks/useAppTheme";
+import { handleError } from "../utils/errorHandler";
+import { triggerImpactHaptic } from "../utils/haptics";
+import { createOrder, getOrderPreview, getOrders } from "../services/orderService";
+import { createPaymentOrder, verifyPayment } from "../services/paymentService";
+import { formatPrice } from "../utils/formatPrice";
+
+const getPaymentFailureMessage = (error: any) => {
+  const raw = String(error?.description || error?.message || "")
+    .trim()
+    .toLowerCase();
+
+  if (raw.includes("cancel")) {
+    return "You cancelled the payment. No order was created.";
+  }
+
+  return (
+    error?.description ||
+    error?.message ||
+    "Payment was not completed. No order was created."
+  );
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function Payment() {
   const router = useRouter();
-  const {
-    service,
-    items,
-    date,
-    slot,
-    addressId,
-    addressName,
-  } = useLocalSearchParams();
-const [backendTotal, setBackendTotal] = useState<number>(0);
-const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
-const [loadingTotal, setLoadingTotal] = useState(true);
+  const insets = useSafeAreaInsets();
+  const { theme, isDark } = useAppTheme();
+  const { service, items, date, slot, addressId } = useLocalSearchParams();
 
-  const parsedItems = items ? JSON.parse(items as string) : {};
-  const [method, setMethod] = useState<string | null>(null);
-useEffect(() => {
-  fetchPreview();
-}, []);
-
-const fetchPreview = async () => {
-  try {
-    const token = await AsyncStorage.getItem("token");
-
-    const orderItems = Object.keys(parsedItems)
-      .filter((key) => parsedItems[key] > 0)
-      .map((key) => ({
-        itemName: key,
-        quantity: parsedItems[key],
-      }));
-
-    const response = await fetch(
-      "http://10.0.2.2:4000/orders/preview",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token || "",
-        },
-        body: JSON.stringify({
-  items: orderItems,
-  service,
-}),
-
-      }
-    );
-
-    const data = await response.json();
-
-    if (data.success) {
-  setBackendTotal(data.totalAmount);
-  setDeliveryCharge(data.deliveryCharge);
-}
-
-  } catch (error) {
-    console.log("Preview failed");
-  } finally {
-    setLoadingTotal(false);
-  }
-};
-
-  const totalItems = Object.values(parsedItems).reduce(
-    (sum: number, qty: any) => sum + Number(qty),
-    0
+  const parsedItems = useMemo<Record<string, number>>(
+    () => (items ? JSON.parse(items as string) : {}),
+    [items]
   );
 
+  const getOrderItems = () =>
+    Object.keys(parsedItems)
+      .filter((key) => Number(parsedItems[key]) > 0)
+      .map((key) => ({
+        itemName: key,
+        quantity: Number(parsedItems[key]),
+      }));
+
+  const runWithNetworkRetry = async <T,>(task: () => Promise<T>, attempts = 3) => {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await task();
+      } catch (error) {
+        lastError = error;
+        if (!(error instanceof Error) || error.message !== "NETWORK_ERROR" || attempt === attempts - 1) {
+          throw error;
+        }
+        await wait(1000 * (attempt + 1));
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("NETWORK_ERROR");
+  };
+
+  const goToConfirmation = (params: { orderId: string; total: number; status?: string }) => {
+    router.replace({
+      pathname: "/order-confirmation",
+      params: {
+        orderId: params.orderId,
+        total: params.total,
+        date,
+        slot,
+        status: params.status || "Scheduled",
+      },
+    });
+  };
+
+  const recoverExistingOrder = async () => {
+    const latestOrder = [...(await runWithNetworkRetry(() => getOrders()))]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      )[0];
+
+    if (!latestOrder) {
+      throw new Error("No order found after payment");
+    }
+
+    goToConfirmation({
+      orderId: latestOrder._id,
+      total: latestOrder.totalAmount || 0,
+      status: latestOrder.status,
+    });
+  };
+
+  const fallbackSubtotal = Object.keys(parsedItems).reduce((sum, key) => {
+    const pricing: Record<string, number> = {
+      shirt: 30,
+      tshirt: 25,
+      jeans: 60,
+      trousers: 45,
+      dress: 90,
+      jacket: 140,
+      sweater: 70,
+      bedsheet: 120,
+      pillowcover: 35,
+      towel: 40,
+      curtain: 180,
+      blanket: 220,
+    };
+
+    return sum + (pricing[key] || 0) * Number(parsedItems[key]);
+  }, 0);
+
+  const fallbackDelivery = fallbackSubtotal < 399 ? 40 : 0;
+  const [backendTotal, setBackendTotal] = useState<number>(fallbackSubtotal + fallbackDelivery);
+  const [pricingRefreshing, setPricingRefreshing] = useState(true);
+  const [processingPayment, setProcessingPayment] = useState(false);
+
+  useEffect(() => {
+    void fetchPreview();
+  }, []);
+
+  const fetchPreview = async () => {
+    try {
+      const data = await Promise.race([
+        getOrderPreview({
+            items: getOrderItems(),
+            service,
+        }),
+        new Promise<{
+          success: boolean;
+          totalAmount: number;
+          deliveryCharge: number;
+        }>((_, reject) => setTimeout(() => reject(new Error("PREVIEW_TIMEOUT")), 8000)),
+      ]);
+
+      setBackendTotal(data.totalAmount);
+    } catch (error) {
+      if (!(error instanceof Error && error.message === "PREVIEW_TIMEOUT")) {
+        handleError(error);
+      }
+    } finally {
+      setPricingRefreshing(false);
+    }
+  };
+
+  const createOrderInBackend = async (paymentVerificationToken: string) => {
+    try {
+      const data = await runWithNetworkRetry(() =>
+        createOrder({
+          addressId,
+          items: getOrderItems(),
+          service,
+          paymentVerificationToken,
+        })
+      );
+
+      goToConfirmation({
+        orderId: data.order._id,
+        total: data.order.totalAmount,
+        status: data.order.status,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Payment already linked to an order") {
+        await recoverExistingOrder();
+        return;
+      }
+      throw error;
+    }
+  };
+
+  const startRazorpayPayment = async () => {
+    const data = await createPaymentOrder({
+      addressId,
+      items: getOrderItems(),
+      service,
+    });
+
+    const paymentResult = data.mock
+      ? {
+          razorpay_payment_id: `pay_mock_${Date.now()}`,
+          razorpay_order_id: data.paymentOrder.id,
+          razorpay_signature: "mock_signature",
+        }
+      : await RazorpayCheckout.open({
+          key: data.keyId,
+          amount: data.paymentOrder.amount,
+          currency: data.paymentOrder.currency,
+          order_id: data.paymentOrder.id,
+          name: "Fresh & Fold",
+          description: "Laundry order payment",
+          theme: { color: "#2563EB" },
+        });
+
+    const verifyData = await runWithNetworkRetry(() =>
+      verifyPayment({
+        addressId,
+        items: getOrderItems(),
+        service,
+        payment: {
+          razorpay_payment_id: paymentResult.razorpay_payment_id,
+          razorpay_order_id: paymentResult.razorpay_order_id,
+          razorpay_signature: paymentResult.razorpay_signature,
+        },
+      })
+    );
+
+    if (!verifyData.paymentVerificationToken) {
+      throw new Error(verifyData.message || "Payment verification failed");
+    }
+
+    await createOrderInBackend(verifyData.paymentVerificationToken);
+  };
+
   const confirmOrder = async () => {
-    if (!method) {
-      Alert.alert("Select Payment Method");
+    if (processingPayment) {
       return;
     }
 
+    setProcessingPayment(true);
     try {
-      const token = await AsyncStorage.getItem("token");
-
-      const orderItems = Object.keys(parsedItems)
-        .filter((key) => parsedItems[key] > 0)
-        .map((key) => ({
-          itemName: key,
-          quantity: parsedItems[key],
-        }));
-
-      const response = await fetch(
-        "http://10.0.2.2:4000/orders",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: token || "",
-          },
-          body: JSON.stringify({
-            addressId,
-            items: orderItems,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.success) {
-        router.replace({
-          pathname: "/order-confirmation",
-          params: {
-            orderId: data.order._id,
-            total: data.order.totalAmount,
-          },
-        });
+      void triggerImpactHaptic();
+      await startRazorpayPayment();
+    } catch (error: any) {
+      if (
+        error instanceof Error &&
+        (error.message === "SESSION_EXPIRED" || error.message === "NETWORK_ERROR")
+      ) {
+        handleError(error);
       } else {
-        Alert.alert("Order failed");
+        handleError(new Error(getPaymentFailureMessage(error)));
       }
-    } catch (error) {
-      Alert.alert("Network error");
+    } finally {
+      setProcessingPayment(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.header}>Payment</Text>
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <View style={[styles.backgroundGlowTop, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.22 : 0.9 }]} />
+      <View style={[styles.backgroundGlowBottom, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.14 : 0.5 }]} />
 
-        {/* ORDER SUMMARY CARD */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Order Summary</Text>
-
-          <View style={styles.row}>
-            <Text>Service</Text>
-            <Text style={styles.bold}>{service}</Text>
-          </View>
-
-          <View style={styles.row}>
-            <Text>Items</Text>
-            <Text style={styles.bold}>
-              {totalItems} pieces
-            </Text>
-          </View>
-
-          <View style={styles.row}>
-            <Text>Pickup</Text>
-            <Text style={styles.bold}>
-              {date} · {slot}
-            </Text>
-          </View>
-
-          <View style={styles.row}>
-            <Text>Address</Text>
-            <Text style={styles.bold}>
-              {addressName}
-            </Text>
-          </View>
-<View style={styles.row}>
-  <Text style={styles.totalLabel}>Total</Text>
-  <Text style={styles.totalAmount}>
-    ₹{backendTotal}
-  </Text>
-</View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.row}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalAmount}>
-              ₹{backendTotal}
-
-            </Text>
-          </View>
-        </View>
-
-        {/* PAYMENT METHODS */}
-        <Text style={styles.sectionTitle}>
-          Payment Method
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 140,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.header, { color: theme.text }]}>Secure Payment</Text>
+        <Text style={[styles.subheader, { color: theme.textMuted }]}>
+          Complete your order with a fast and secure payment experience.
         </Text>
 
-        <TouchableOpacity
-          style={[
-            styles.methodCard,
-            method === "paynow" && styles.selected,
-          ]}
-          onPress={() => setMethod("paynow")}
-        >
-          <Text style={styles.methodTitle}>
-            Pay Now
-          </Text>
-          <Text style={styles.methodSubtitle}>
-            UPI, Card, Net Banking
-          </Text>
-        </TouchableOpacity>
+        <Card style={styles.totalCard}>
+          <Text style={[styles.totalLabel, { color: theme.textMuted }]}>Order Total</Text>
+          <Text style={[styles.total, { color: theme.text }]}>{formatPrice(backendTotal)}</Text>
+          {pricingRefreshing ? (
+            <Text style={[styles.refreshText, { color: theme.textMuted }]}>Updating final pricing...</Text>
+          ) : null}
+        </Card>
 
-        <TouchableOpacity
-          style={[
-            styles.methodCard,
-            method === "cod" && styles.selected,
-          ]}
-          onPress={() => setMethod("cod")}
-        >
-          <Text style={styles.methodTitle}>
-            Pay After Delivery
-          </Text>
-          <Text style={styles.methodSubtitle}>
-            Pay when clothes are delivered
-          </Text>
-        </TouchableOpacity>
+        <Text style={[styles.section, { color: theme.text }]}>Payment Method</Text>
+        <PaymentMethodCard />
 
-        <View style={{ height: 120 }} />
+        <View style={styles.securityRow}>
+          <MaterialIcons name="lock" size={18} color={theme.success} />
+          <Text style={[styles.secure, { color: theme.success }]}>100% Secure Payment</Text>
+        </View>
       </ScrollView>
 
-      {/* STICKY BUTTON */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
         <TouchableOpacity
-          disabled={!method}
-          style={[
-            styles.placeButton,
-            !method && { opacity: 0.4 },
-          ]}
+          disabled={processingPayment}
+          style={[styles.payButton, { backgroundColor: theme.primary }, processingPayment && styles.payButtonDisabled]}
+          activeOpacity={0.9}
           onPress={confirmOrder}
         >
-          <Text style={styles.placeText}>
-            Place Order · ₹{backendTotal}
-
+          <Text style={styles.payText}>
+            {processingPayment ? "Processing..." : "Pay with Razorpay"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -237,68 +294,90 @@ const fetchPreview = async () => {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  screen: {
+    flex: 1,
+  },
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -90,
+    right: -36,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+  },
+  backgroundGlowBottom: {
+    position: "absolute",
+    bottom: 110,
+    left: -70,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
   header: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "700",
-    padding: 24,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: "#EEE",
-    borderRadius: 12,
-    marginHorizontal: 24,
-    padding: 16,
-    marginBottom: 30,
-  },
-  cardTitle: {
-    fontWeight: "700",
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     marginBottom: 8,
   },
-  bold: { fontWeight: "600" },
-  divider: {
-    height: 1,
-    backgroundColor: "#EEE",
-    marginVertical: 12,
+  subheader: {
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 24,
   },
-  totalLabel: { fontWeight: "700" },
-  totalAmount: { fontWeight: "700", fontSize: 16 },
-  sectionTitle: {
-    marginHorizontal: 24,
-    fontWeight: "600",
-    marginBottom: 12,
-  },
-  methodCard: {
-    borderWidth: 1,
-    borderColor: "#EEE",
-    borderRadius: 12,
-    marginHorizontal: 24,
-    padding: 16,
-    marginBottom: 16,
-  },
-  selected: { borderColor: "#000" },
-  methodTitle: { fontWeight: "600" },
-  methodSubtitle: { fontSize: 12, color: "#666" },
-  bottomBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+  totalCard: {
+    marginBottom: 20,
     padding: 20,
-    borderTopWidth: 1,
-    borderColor: "#EEE",
-    backgroundColor: "#FFF",
   },
-  placeButton: {
-    backgroundColor: "#000",
-    padding: 14,
-    borderRadius: 10,
+  totalLabel: {
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  total: {
+    fontSize: 32,
+    fontWeight: "800",
+  },
+  refreshText: {
+    marginTop: 8,
+    fontSize: 12,
+  },
+  section: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  securityRow: {
+    marginTop: 14,
+    flexDirection: "row",
     alignItems: "center",
   },
-  placeText: { color: "#FFF", fontWeight: "600" },
+  secure: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  payButton: {
+    height: 56,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payButtonDisabled: {
+    opacity: 0.45,
+  },
+  payText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 16,
+  },
 });

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setUnauthorizedHandler } from "../utils/api";
 
 type AuthContextType = {
   isLoggedIn: boolean;
@@ -16,14 +17,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkLogin = async () => {
-      const token = await AsyncStorage.getItem("token");
-      if (token) {
-        setIsLoggedIn(true);
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (token) {
+          setIsLoggedIn(true);
+        }
+      } catch (error) {
+        console.warn("Auth bootstrap failed:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    checkLogin();
+    void checkLogin();
   }, []);
 
   const login = async () => {
@@ -34,6 +40,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem("token");
     setIsLoggedIn(false);
   };
+
+  useEffect(() => {
+    setUnauthorizedHandler(async () => {
+      await logout();
+    });
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ isLoggedIn, loading, login, logout }}>

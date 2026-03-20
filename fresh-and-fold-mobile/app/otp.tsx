@@ -1,78 +1,99 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useState } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "../context/AuthContext";
+import { useAppTheme } from "../hooks/useAppTheme";
+import { registerForPushNotificationsAsync } from "../utils/registerForPushNotifications";
+import { apiRequest } from "../utils/api";
+import { handleError } from "../utils/errorHandler";
 
 export default function OTPScreen() {
-    
-    const router = useRouter();
-    
-    const { mobile } = useLocalSearchParams();
-
+  const router = useRouter();
+  const { mobile } = useLocalSearchParams();
   const { login } = useAuth();
+  const { theme } = useAppTheme();
   const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
 
-const verifyOtp = async () => {
-  try {
-    const response = await fetch("http://10.0.2.2:4000/auth/verify-otp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        mobile: String(mobile),
-        otp,
-      }),
-    });
+  const verifyOtp = async () => {
+    try {
+      setLoading(true);
+      const data = await apiRequest<{ success: boolean; token: string }>(
+        "/auth/verify-otp",
+        {
+          method: "POST",
+          body: {
+            mobile: String(mobile),
+            otp,
+          },
+        }
+      );
 
-    const data = await response.json();
+      const normalizedToken = String(data.token || "")
+        .replace(/^(\s*Bearer\s+)+/i, "")
+        .trim();
+      await AsyncStorage.setItem("token", normalizedToken);
+      await AsyncStorage.setItem("mobile", String(mobile || ""));
 
-    if (data.success) {
-      // 🔐 Store token
-      await AsyncStorage.setItem("token", data.token);
-      
+      try {
+        const pushToken = await registerForPushNotificationsAsync();
+        if (pushToken) {
+          await apiRequest("/user/save-push-token", {
+            method: "POST",
+            token: normalizedToken,
+            body: { pushToken },
+          });
+        }
+      } catch (error) {
+        console.warn("Push notification setup failed:", error);
+      }
 
-const savedToken = await AsyncStorage.getItem("token");
-console.log("Saved Token:", savedToken);
-
-
-      login(); // your context login
+      await login();
       router.replace("/home");
-    } else {
-      Alert.alert("Error", data.message || "Invalid OTP");
+    } catch (error) {
+      if (error instanceof Error && error.message === "Invalid OTP") {
+        handleError(error);
+      } else {
+        console.warn("OTP verification failed:", error);
+        handleError(error);
+      }
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    Alert.alert("Network Error", "Could not connect to server.");
-  }
-  
-};
-
-
+  };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Enter OTP</Text>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.title, { color: theme.text }]}>Enter OTP</Text>
 
       <TextInput
         placeholder="Enter 6-digit OTP"
+        placeholderTextColor="#9CA3AF"
         keyboardType="number-pad"
         maxLength={6}
         value={otp}
         onChangeText={setOtp}
-        style={styles.input}
+        style={[styles.input, { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text }]}
       />
 
-      <TouchableOpacity style={styles.button} onPress={verifyOtp}>
-        <Text style={styles.buttonText}>Verify</Text>
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: theme.primary }, loading && styles.buttonDisabled]}
+        onPress={verifyOtp}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Text style={styles.buttonText}>Verify</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -81,20 +102,17 @@ console.log("Saved Token:", savedToken);
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     padding: 24,
   },
   title: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#000000",
     marginBottom: 24,
     textAlign: "center",
   },
   input: {
     borderWidth: 1,
-    borderColor: "#000000",
     padding: 14,
     borderRadius: 6,
     marginBottom: 16,
@@ -102,10 +120,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   button: {
-    backgroundColor: "#000000",
     padding: 16,
     borderRadius: 6,
     alignItems: "center",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     color: "#FFFFFF",

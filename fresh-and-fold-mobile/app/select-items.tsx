@@ -1,18 +1,30 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Card from "../components/Card";
+import ItemCard from "../components/ItemCard";
+import { useAppTheme } from "../hooks/useAppTheme";
 
-export default function SelectItems() {
-  const router = useRouter();
-  const { service } = useLocalSearchParams();
+type ItemKey =
+  | "shirt"
+  | "tshirt"
+  | "jeans"
+  | "trousers"
+  | "dress"
+  | "jacket"
+  | "sweater"
+  | "bedsheet"
+  | "pillowcover"
+  | "towel"
+  | "curtain"
+  | "blanket";
 
-const pricing: Record<string, number> = {
+type ItemState = Record<ItemKey, number>;
+
+const pricing: Record<ItemKey, number> = {
   shirt: 30,
   tshirt: 25,
   jeans: 60,
@@ -27,111 +39,133 @@ const pricing: Record<string, number> = {
   blanket: 220,
 };
 
-  const clothingItems = [
-    { key: "shirt", label: "👔 Shirt" },
-    { key: "tshirt", label: "👕 T-Shirt" },
-    { key: "jeans", label: "👖 Jeans" },
-    { key: "trousers", label: "👔 Trousers" },
-    { key: "dress", label: "👗 Dress" },
-    { key: "jacket", label: "🧥 Jacket" },
-    { key: "sweater", label: "🧶 Sweater" },
-  ];
+const clothingItems: Array<{
+  key: ItemKey;
+  name: string;
+}> = [
+  { key: "shirt", name: "Shirt" },
+  { key: "tshirt", name: "T-Shirt" },
+  { key: "jeans", name: "Jeans" },
+  { key: "trousers", name: "Trousers" },
+  { key: "dress", name: "Dress" },
+  { key: "jacket", name: "Jacket" },
+  { key: "sweater", name: "Sweater" },
+];
 
-  const homeItems = [
-    { key: "bedsheet", label: "🛏️ Bedsheet" },
-    { key: "pillowcover", label: "🛋️ Pillow Cover" },
-    { key: "towel", label: "🧺 Towel" },
-    { key: "curtain", label: "🪟 Curtain" },
-    { key: "blanket", label: "🛌 Blanket" },
-  ];
+const homeItems: Array<{
+  key: ItemKey;
+  name: string;
+}> = [
+  { key: "bedsheet", name: "Bedsheet" },
+  { key: "pillowcover", name: "Pillow Cover" },
+  { key: "towel", name: "Towel" },
+  { key: "curtain", name: "Curtain" },
+  { key: "blanket", name: "Blanket" },
+];
 
-  const [items, setItems] = useState(
-    Object.keys(pricing).reduce((acc, key) => {
-      acc[key] = 0;
-      return acc;
-    }, {} as any)
-  );
+const initialItems = Object.keys(pricing).reduce((acc, key) => {
+  acc[key as ItemKey] = 0;
+  return acc;
+}, {} as ItemState);
 
-  const updateQty = (key: string, delta: number) => {
-    setItems((prev: any) => ({
+export default function SelectItems() {
+  const router = useRouter();
+  const { service } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+  const { theme, isDark } = useAppTheme();
+  const [items, setItems] = useState<ItemState>(initialItems);
+
+  const updateQty = (key: ItemKey, delta: number) => {
+    setItems((prev) => ({
       ...prev,
       [key]: Math.max(0, prev[key] + delta),
     }));
   };
 
-  const totalItems = Object.values(items).reduce(
-    (sum: number, qty: any) => sum + qty,
-    0
-  );
-
-  const totalAmount = Object.keys(items).reduce(
+  const totalItems = Object.values(items).reduce((sum, qty) => sum + qty, 0);
+  const totalAmount = (Object.keys(items) as ItemKey[]).reduce(
     (sum, key) => sum + items[key] * pricing[key],
     0
   );
 
-  const renderSection = (title: string, list: any[]) => (
-    <>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {list.map((item) => (
-        <View key={item.key} style={styles.row}>
-          <View>
-            <Text style={styles.itemLabel}>{item.label}</Text>
-            <Text style={styles.price}>
-              ₹{pricing[item.key]}
-            </Text>
-          </View>
-
-          <View style={styles.counter}>
-            <TouchableOpacity
-              onPress={() => updateQty(item.key, -1)}
-              style={styles.counterButton}
-            >
-              <Text style={styles.counterText}>−</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.countValue}>
-              {items[item.key]}
-            </Text>
-
-            <TouchableOpacity
-              onPress={() => updateQty(item.key, 1)}
-              style={styles.counterButton}
-            >
-              <Text style={styles.counterText}>+</Text>
-            </TouchableOpacity>
-          </View>
+  const renderSection = (
+    title: string,
+    subtitle: string,
+    list: Array<{
+      key: ItemKey;
+      name: string;
+    }>
+  ) => (
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>
         </View>
+
+      {list.map((item, index) => (
+        <ItemCard
+          key={item.key}
+          item={{
+            key: item.key,
+            name: item.name,
+            price: pricing[item.key],
+          }}
+          quantity={items[item.key]}
+          onAdd={() => updateQty(item.key, 1)}
+          onRemove={() => updateQty(item.key, -1)}
+          index={index}
+        />
       ))}
-    </>
+    </View>
   );
 
   return (
-    <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.header}>Select Items</Text>
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <View style={[styles.backgroundGlowTop, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.22 : 0.9 }]} />
+      <View style={[styles.backgroundGlowBottom, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.14 : 0.5 }]} />
 
-        {renderSection("Clothing", clothingItems)}
-        {renderSection("Home & Linen", homeItems)}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 132,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.header, { color: theme.text }]}>Select Items</Text>
+        <Text style={[styles.subheader, { color: theme.textMuted }]}>
+          Add the garments and household pieces you want us to clean, press, or deliver.
+        </Text>
 
-        <View style={{ height: 100 }} />
+        <Card style={styles.infoCard}>
+          <View style={[styles.infoIconWrap, { backgroundColor: theme.primarySoft }]}>
+            <MaterialIcons name="inventory-2" size={18} color={theme.primary} />
+          </View>
+          <View style={styles.infoCopy}>
+            <Text style={[styles.infoTitle, { color: theme.textMuted }]}>Service selected</Text>
+            <Text style={[styles.infoText, { color: theme.text }]}>
+              {String(service || "Laundry").replace(/^\w/, (char) => char.toUpperCase())}
+            </Text>
+          </View>
+        </Card>
+
+        {renderSection("Clothing", "Daily wear and delicate garments", clothingItems)}
+        {renderSection("Home & Linen", "Large household fabrics and essentials", homeItems)}
       </ScrollView>
 
-      <View style={styles.bottomBar}>
+      <Animated.View
+        entering={FadeIn.duration(250)}
+        style={[styles.bottomBar, { paddingBottom: insets.bottom + 18, borderColor: theme.border, backgroundColor: theme.glass }]}
+      >
         <View>
-          <Text style={styles.totalItems}>
-            {totalItems} items
-          </Text>
-          <Text style={styles.totalAmount}>
-            ₹{totalAmount}
-          </Text>
+          <Text style={[styles.totalItems, { color: theme.textMuted }]}>{totalItems} items</Text>
+          <Text style={[styles.totalAmount, { color: theme.text }]}>Rs.{totalAmount}</Text>
         </View>
 
         <TouchableOpacity
           disabled={totalItems === 0}
-          style={[
-            styles.continueButton,
-            totalItems === 0 && { opacity: 0.4 },
-          ]}
+          style={[styles.continueButton, { backgroundColor: theme.text }, totalItems === 0 && styles.continueButtonDisabled]}
+          activeOpacity={0.9}
           onPress={() =>
             router.push({
               pathname: "/schedule-basic",
@@ -144,50 +178,86 @@ const pricing: Record<string, number> = {
           }
         >
           <Text style={styles.continueText}>Continue</Text>
+          <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  screen: {
+    flex: 1,
+  },
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -70,
+    right: -40,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+  },
+  backgroundGlowBottom: {
+    position: "absolute",
+    bottom: 90,
+    left: -70,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
   header: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "700",
-    padding: 24,
+    marginBottom: 8,
   },
-  sectionTitle: {
+  subheader: {
     fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 24,
-    marginTop: 10,
-    marginBottom: 10,
-    color: "#666",
+    lineHeight: 21,
+    marginBottom: 20,
   },
-  row: {
+  infoCard: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderColor: "#EEE",
+    marginBottom: 24,
   },
-  itemLabel: { fontSize: 14, fontWeight: "500" },
-  price: { fontSize: 12, color: "#666" },
-  counter: { flexDirection: "row", alignItems: "center" },
-  counterButton: {
-    borderWidth: 1,
-    borderColor: "#000",
-    width: 28,
-    height: 28,
+  infoIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 6,
+    marginRight: 12,
   },
-  counterText: { fontWeight: "600" },
-  countValue: { marginHorizontal: 12 },
+  infoCopy: {
+    flex: 1,
+  },
+  infoTitle: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  infoText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  section: {
+    marginBottom: 10,
+  },
+  sectionHeader: {
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    marginTop: 4,
+  },
   bottomBar: {
     position: "absolute",
     bottom: 0,
@@ -195,19 +265,34 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 20,
     borderTopWidth: 1,
-    borderColor: "#EEE",
-    backgroundColor: "#FFF",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  totalItems: { fontSize: 12, color: "#666" },
-  totalAmount: { fontSize: 18, fontWeight: "700" },
-  continueButton: {
-    backgroundColor: "#000",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+  totalItems: {
+    fontSize: 13,
+    marginBottom: 4,
   },
-  continueText: { color: "#FFF", fontWeight: "600" },
+  totalAmount: {
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  continueButton: {
+    paddingHorizontal: 24,
+    height: 48,
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 118,
+  },
+  continueButtonDisabled: {
+    opacity: 0.45,
+  },
+  continueText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 15,
+  },
 });

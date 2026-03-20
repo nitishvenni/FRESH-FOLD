@@ -1,98 +1,105 @@
 import {
+  RefreshControl,
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
   FlatList,
 } from "react-native";
-import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import EmptyStateAnimation from "../components/EmptyStateAnimation";
+import OrderSkeleton from "../components/OrderSkeleton";
+import { handleError } from "../utils/errorHandler";
+import { useAppTheme } from "../hooks/useAppTheme";
+import { APP_TAB_BAR_HEIGHT } from "../components/AppTabBar";
+import { triggerImpactHaptic } from "../utils/haptics";
+import OrderCard from "../components/OrderCard";
+import useOrders from "../hooks/useOrders";
+import { formatDate } from "../utils/formatDate";
+import { showToast } from "../utils/toast";
 
 export default function OrderHistory() {
   const router = useRouter();
-  const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
+  const { theme } = useAppTheme();
+  const { orders, loading, error, refresh } = useOrders();
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (error) {
+      handleError(error);
+    }
+  }, [error]);
 
-  const fetchOrders = async () => {
+  const onRefresh = async () => {
     try {
-      const token = await AsyncStorage.getItem("token");
-
-      const response = await fetch(
-        "http://10.0.2.2:4000/orders",
-        {
-          headers: {
-            Authorization: token || "",
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.success) {
-        setOrders(data.orders);
-      }
-    } catch (error) {
-      console.log("Error fetching orders");
+      setRefreshing(true);
+      await refresh();
+      showToast({
+        type: "success",
+        title: "Orders refreshed",
+      });
+    } catch (refreshError) {
+      handleError(refreshError);
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
   if (loading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#000" />
-      </View>
-    );
+    return <OrderSkeleton />;
   }
 
   if (orders.length === 0) {
     return (
-      <View style={styles.loader}>
-        <Text>No Orders Yet</Text>
+      <View style={[styles.loader, { backgroundColor: theme.background }]}>
+        <EmptyStateAnimation />
+        <Text style={[styles.emptyTitle, { color: theme.text }]}>No Orders Yet</Text>
+        <Text style={[styles.emptyCopy, { color: theme.textMuted }]}>
+          Your completed and active laundry orders will show up here once you place one.
+        </Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Order History</Text>
+    <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top + 24 }]}>
+      <Text style={[styles.header, { color: theme.text }]}>Order History</Text>
 
-      <FlatList
-        data={orders}
-        keyExtractor={(item) => item._id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() =>
+		      <FlatList
+		        data={orders}
+		        keyExtractor={(item) => item._id}
+		        contentContainerStyle={{ paddingBottom: APP_TAB_BAR_HEIGHT + insets.bottom + 32 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => {
+                  void onRefresh();
+                }}
+                tintColor={theme.primary}
+              />
+            }
+		        renderItem={({ item }) => (
+          <OrderCard
+            order={{
+	              id: item._id.slice(-6),
+	              status: item.status,
+	              total: item.totalAmount || 0,
+	              dateLabel: formatDate(item.createdAt),
+	            }}
+            onTrack={() => {
+              void triggerImpactHaptic();
               router.push({
                 pathname: "/track-order",
                 params: { orderId: item._id },
-              })
-            }
-          >
-            <Text style={styles.orderId}>
-              Order #{item._id.slice(-6)}
-            </Text>
-
-            <Text style={styles.status}>
-              Status: {item.status}
-            </Text>
-
-            <Text style={styles.total}>
-              ₹{item.totalAmount}
-            </Text>
-
-            <Text style={styles.date}>
-              {new Date(item.createdAt).toDateString()}
-            </Text>
-          </TouchableOpacity>
+              });
+            }}
+            onReorder={() => {
+              void triggerImpactHaptic();
+              router.push("/select-service");
+            }}
+          />
         )}
       />
     </View>
@@ -102,41 +109,27 @@ export default function OrderHistory() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
     padding: 24,
-    paddingTop: 80,
   },
   loader: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 32,
   },
   header: {
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 20,
   },
-  card: {
-    borderWidth: 1,
-    borderColor: "#EAEAEA",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  orderId: {
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: "700",
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  status: {
-    color: "#666",
-    marginBottom: 4,
-  },
-  total: {
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  date: {
-    color: "#999",
-    fontSize: 12,
+  emptyCopy: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
   },
 });

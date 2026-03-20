@@ -1,0 +1,220 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+  --accent: #f2a949;
+  --accent-soft: rgba(242, 169, 73, 0.12);
+  --text-primary: #f8fafc;
+  --text-secondary: #dbe4f0;
+  --text-muted: #8d9aab;
+  --surface-border: rgba(255, 255, 255, 0.08);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  font-family: Aptos, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  background: #05070c;
+  color: var(--text-primary);
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role="button"] {
+  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  transform-origin: center;
+}
+
+button.press-feedback,
+[role="button"].press-feedback {
+  animation: buttonPressFeedback 720ms ease;
+  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.06);
+}
+
+button:active,
+[role="button"]:active {
+  transform: scale(0.86);
+  opacity: 0.9;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+@keyframes gradientMove {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes floatBlobOne {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-36px, 26px, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floatBlobTwo {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(40px, -30px, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes buttonPressFeedback {
+  0% {
+    transform: scale(1);
+  }
+  18% {
+    transform: scale(0.84);
+  }
+  58% {
+    transform: scale(0.84);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cursor-glow {
+  position: fixed;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(250, 204, 21, 0.16), rgba(251, 191, 36, 0.08) 34%, transparent 72%);
+  filter: blur(42px);
+  z-index: 8;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  will-change: transform;
+  mix-blend-mode: screen;
+}
+
+@media (max-width: 960px) {
+  body {
+    font-size: 15px;
+  }
+}
+
+.revenue-heatmap-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.revenue-heatmap {
+  width: min(100%, 760px);
+}
+
+.revenue-heatmap .react-calendar-heatmap {
+  width: 100%;
+  min-width: 720px;
+}
+
+.revenue-heatmap .react-calendar-heatmap text {
+  fill: var(--text-muted);
+  font-size: 8px;
+}
+
+.revenue-heatmap .react-calendar-heatmap .react-calendar-heatmap-month-label {
+  font-size: 12px;
+}
+
+.revenue-heatmap .react-calendar-heatmap rect {
+  rx: 2px;
+  ry: 2px;
+}
+
+.revenue-heatmap .react-calendar-heatmap .color-empty {
+  fill: rgba(255, 255, 255, 0.05);
+}
+
+.revenue-heatmap .react-calendar-heatmap .color-gold-1 {
+  fill: rgba(242, 169, 73, 0.24);
+}
+
+.revenue-heatmap .react-calendar-heatmap .color-gold-2 {
+  fill: rgba(242, 169, 73, 0.42);
+}
+
+.revenue-heatmap .react-calendar-heatmap .color-gold-3 {
+  fill: rgba(242, 169, 73, 0.68);
+}
+
+.revenue-heatmap .react-calendar-heatmap .color-gold-4 {
+  fill: #f2a949;
+}
+
+.heatmap-legend {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.heatmap-legend-1 {
+  background: rgba(242, 169, 73, 0.24);
+}
+
+.heatmap-legend-2 {
+  background: rgba(242, 169, 73, 0.42);
+}
+
+.heatmap-legend-3 {
+  background: rgba(242, 169, 73, 0.68);
+}
+
+.heatmap-legend-4 {
+  background: #f2a949;
+}

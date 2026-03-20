@@ -1,36 +1,27 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+} from "react-native";
 import { useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useLocalSearchParams } from "expo-router";
-
+import { apiRequest } from "../utils/api";
+import { handleError } from "../utils/errorHandler";
 
 export default function CreateOrder() {
   const router = useRouter();
-  const { service, items, date, slot } = useLocalSearchParams();
-
-const parsedItems = items ? JSON.parse(items as string) : {};
-console.log("Final Service:", service);
-console.log("Final Items:", parsedItems);
-console.log("Date:", date);
-console.log("Slot:", slot);
-
-
   const [shirtQty, setShirtQty] = useState("0");
   const [pantQty, setPantQty] = useState("0");
+  const [loading, setLoading] = useState(false);
 
   const placeOrder = async () => {
     try {
-      const token = await AsyncStorage.getItem("token");
+      setLoading(true);
 
-      if (!token) {
-        Alert.alert("Error", "Not authenticated");
-        return;
-      }
-
-      // 🔹 TEMP: Replace with real addressId from Postman
       const addressId = "PASTE_YOUR_ADDRESS_ID_HERE";
-
       const items = [
         {
           itemName: "Shirt",
@@ -44,28 +35,22 @@ console.log("Slot:", slot);
         },
       ];
 
-      const response = await fetch("http://10.0.2.2:4000/orders", {
+      const data = await apiRequest<{ success: boolean }>("/orders", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token,
-        },
-        body: JSON.stringify({
+        body: {
           addressId,
           items,
-        }),
+        },
       });
-
-      const data = await response.json();
 
       if (data.success) {
         Alert.alert("Success", "Order placed successfully!");
         router.replace("/home");
-      } else {
-        Alert.alert("Error", "Order failed");
       }
     } catch (error) {
-      Alert.alert("Error", "Network error");
+      handleError(error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -73,7 +58,7 @@ console.log("Slot:", slot);
     <View style={styles.container}>
       <Text style={styles.title}>Create Order</Text>
 
-      <Text>Shirts (₹20 each)</Text>
+      <Text>Shirts (Rs.20 each)</Text>
       <TextInput
         keyboardType="number-pad"
         value={shirtQty}
@@ -81,7 +66,7 @@ console.log("Slot:", slot);
         style={styles.input}
       />
 
-      <Text>Pants (₹30 each)</Text>
+      <Text>Pants (Rs.30 each)</Text>
       <TextInput
         keyboardType="number-pad"
         value={pantQty}
@@ -89,8 +74,14 @@ console.log("Slot:", slot);
         style={styles.input}
       />
 
-      <TouchableOpacity style={styles.button} onPress={placeOrder}>
-        <Text style={styles.buttonText}>Place Order</Text>
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={placeOrder}
+        disabled={loading}
+      >
+        <Text style={styles.buttonText}>
+          {loading ? "Placing..." : "Place Order"}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -108,6 +99,9 @@ const styles = StyleSheet.create({
     backgroundColor: "black",
     padding: 16,
     alignItems: "center",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: { color: "white", fontWeight: "600" },
 });
