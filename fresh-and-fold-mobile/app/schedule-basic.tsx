@@ -60,6 +60,23 @@ export default function ScheduleBasic() {
           Choose a pickup date and time slot that works best for your order.
         </Text>
 
+        <Card style={styles.summaryCard}>
+          <View style={styles.summaryHeader}>
+            <View style={[styles.summaryIconWrap, { backgroundColor: theme.primarySoft }]}>
+              <MaterialIcons name="schedule" size={18} color={theme.primary} />
+            </View>
+            <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>Pickup Summary</Text>
+          </View>
+          <Text style={[styles.summaryValue, { color: theme.text }]}>
+            {selectedDate && selectedSlot
+              ? `${selectedDate} - ${selectedSlot}`
+              : "Choose a date and slot to continue"}
+          </Text>
+          <Text style={[styles.summaryHelper, { color: theme.textMuted }]}>
+            Your garments will be collected from the selected address in this time window.
+          </Text>
+        </Card>
+
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Date</Text>
         <ScrollView
           horizontal
@@ -94,23 +111,6 @@ export default function ScheduleBasic() {
             }}
           />
         ))}
-
-        <Card style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <View style={[styles.summaryIconWrap, { backgroundColor: theme.primarySoft }]}>
-              <MaterialIcons name="schedule" size={18} color={theme.primary} />
-            </View>
-            <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>Pickup Summary</Text>
-          </View>
-          <Text style={[styles.summaryValue, { color: theme.text }]}>
-            {selectedDate && selectedSlot
-              ? `${selectedDate} - ${selectedSlot}`
-              : "Choose a date and slot to continue"}
-          </Text>
-          <Text style={[styles.summaryHelper, { color: theme.textMuted }]}>
-            Your garments will be collected from the selected address in this time window.
-          </Text>
-        </Card>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
   summaryCard: {
-    marginTop: 10,
+    marginBottom: 22,
   },
   summaryHeader: {
     flexDirection: "row",

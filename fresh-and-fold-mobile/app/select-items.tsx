@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
 import ItemCard from "../components/ItemCard";
 import { useAppTheme } from "../hooks/useAppTheme";
+import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
 
 type ItemKey =
   | "shirt"
@@ -23,21 +24,6 @@ type ItemKey =
   | "blanket";
 
 type ItemState = Record<ItemKey, number>;
-
-const pricing: Record<ItemKey, number> = {
-  shirt: 20,
-  tshirt: 18,
-  jeans: 40,
-  trousers: 35,
-  dress: 60,
-  jacket: 90,
-  sweater: 50,
-  bedsheet: 70,
-  pillowcover: 20,
-  towel: 22,
-  curtain: 110,
-  blanket: 140,
-};
 
 const clothingItems: Array<{
   key: ItemKey;
@@ -63,8 +49,8 @@ const homeItems: Array<{
   { key: "blanket", name: "Blanket" },
 ];
 
-const initialItems = Object.keys(pricing).reduce((acc, key) => {
-  acc[key as ItemKey] = 0;
+const initialItems = [...clothingItems, ...homeItems].reduce((acc, item) => {
+  acc[item.key] = 0;
   return acc;
 }, {} as ItemState);
 
@@ -83,10 +69,7 @@ export default function SelectItems() {
   };
 
   const totalItems = Object.values(items).reduce((sum, qty) => sum + qty, 0);
-  const totalAmount = (Object.keys(items) as ItemKey[]).reduce(
-    (sum, key) => sum + items[key] * pricing[key],
-    0
-  );
+  const totalAmount = calculateSubtotal(items, service);
 
   const renderSection = (
     title: string,
@@ -108,7 +91,7 @@ export default function SelectItems() {
           item={{
             key: item.key,
             name: item.name,
-            price: pricing[item.key],
+            price: getItemPriceForService(item.key, service),
           }}
           quantity={items[item.key]}
           onAdd={() => updateQty(item.key, 1)}
@@ -127,7 +110,6 @@ export default function SelectItems() {
       <ScrollView
         style={styles.container}
         contentContainerStyle={{
-          paddingTop: insets.top + 24,
           paddingBottom: insets.bottom + 132,
         }}
         showsVerticalScrollIndicator={false}

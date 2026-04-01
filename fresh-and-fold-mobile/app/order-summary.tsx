@@ -8,6 +8,12 @@ import { useAppTheme } from "../hooks/useAppTheme";
 import { apiRequest } from "../utils/api";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
+import {
+  DELIVERY_CHARGE,
+  FREE_DELIVERY_THRESHOLD,
+  getItemPriceForService,
+  getNormalizedService,
+} from "../utils/pricing";
 
 type PreviewResponse = {
   success: boolean;
@@ -30,26 +36,12 @@ const ITEM_LABELS: Record<string, string> = {
   blanket: "Blanket",
 };
 
-const ITEM_PRICES: Record<string, number> = {
-  shirt: 20,
-  tshirt: 18,
-  jeans: 40,
-  trousers: 35,
-  dress: 60,
-  jacket: 90,
-  sweater: 50,
-  bedsheet: 70,
-  pillowcover: 20,
-  towel: 22,
-  curtain: 110,
-  blanket: 140,
-};
-
 export default function OrderSummaryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
   const { service, items, date, slot, addressId, addressName } = useLocalSearchParams();
+  const normalizedService = getNormalizedService(service);
 
   const parsedItems = useMemo<Record<string, number>>(
     () => (items ? JSON.parse(items as string) : {}),
@@ -64,13 +56,13 @@ export default function OrderSummaryScreen() {
           key,
           label: ITEM_LABELS[key] || key,
           quantity: Number(parsedItems[key]),
-          price: ITEM_PRICES[key] || 0,
+          price: getItemPriceForService(key, service),
         })),
-    [parsedItems]
+    [parsedItems, service]
   );
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const fallbackDeliveryCharge = subtotal < 299 ? 25 : 0;
+  const fallbackDeliveryCharge = subtotal < FREE_DELIVERY_THRESHOLD ? DELIVERY_CHARGE : 0;
   const [deliveryCharge, setDeliveryCharge] = useState(fallbackDeliveryCharge);
   const [backendTotal, setBackendTotal] = useState(subtotal + fallbackDeliveryCharge);
   const [pricingRefreshing, setPricingRefreshing] = useState(true);
@@ -161,9 +153,13 @@ export default function OrderSummaryScreen() {
         </SummaryCard>
 
         <SummaryCard title="Delivery">
-          <Text style={[styles.primaryValue, { color: theme.text }]}>Standard Delivery</Text>
+          <Text style={[styles.primaryValue, { color: theme.text }]}>
+            {normalizedService === "express" ? "Express Delivery" : "Standard Delivery"}
+          </Text>
           <Text style={[styles.secondaryText, { color: theme.textMuted }]}>
-            Doorstep pickup and drop included
+            {normalizedService === "express"
+              ? "Express orders are delivered within 24 hours."
+              : "Doorstep pickup and drop included"}
           </Text>
         </SummaryCard>
 

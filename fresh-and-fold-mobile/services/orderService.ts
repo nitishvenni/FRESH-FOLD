@@ -5,6 +5,17 @@ export type OrderRecord = {
   status: string;
   totalAmount?: number;
   createdAt?: string;
+  service?: string;
+  items?: OrderItemPayload[];
+  addressId?:
+    | string
+    | {
+        _id: string;
+        fullName?: string;
+        street?: string;
+        city?: string;
+        pincode?: string;
+      };
 };
 
 export type OrderItemPayload = {

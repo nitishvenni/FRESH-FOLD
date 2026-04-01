@@ -1,4 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAppTheme } from "../hooks/useAppTheme";
 import Card from "./Card";
 
 type OrderCardProps = {
@@ -29,20 +30,26 @@ export default function OrderCard({
   onTrack,
   onReorder,
 }: OrderCardProps) {
+  const { theme, isDark } = useAppTheme();
   const statusColors = getStatusColors(order.status);
+  const reorderBackground = isDark ? "rgba(96, 165, 250, 0.14)" : "#EFF6FF";
 
   return (
     <Card style={styles.card}>
       <View style={styles.headerRow}>
-        <Text style={styles.orderId}>Order #{order.id}</Text>
-        <Text style={styles.price}>Rs.{order.total}</Text>
+        <Text style={[styles.orderId, { color: theme.text }]}>Order #{order.id}</Text>
+        <Text style={[styles.price, { color: theme.primary }]}>Rs.{order.total}</Text>
       </View>
 
       <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
         <Text style={[styles.badgeText, { color: statusColors.text }]}>{order.status}</Text>
       </View>
 
-      {order.dateLabel ? <Text style={styles.date}>{order.dateLabel}</Text> : null}
+      {order.dateLabel ? (
+        <Text style={[styles.date, { color: isDark ? "#E0F2FE" : theme.textMuted }]}>
+          {order.dateLabel}
+        </Text>
+      ) : null}
 
       <View style={styles.actionsRow}>
         <TouchableOpacity style={styles.trackButton} activeOpacity={0.9} onPress={onTrack}>
@@ -50,8 +57,12 @@ export default function OrderCard({
         </TouchableOpacity>
 
         {onReorder ? (
-          <TouchableOpacity style={styles.reorderButton} activeOpacity={0.9} onPress={onReorder}>
-            <Text style={styles.reorderText}>Reorder</Text>
+          <TouchableOpacity
+            style={[styles.reorderButton, { backgroundColor: reorderBackground }]}
+            activeOpacity={0.9}
+            onPress={onReorder}
+          >
+            <Text style={[styles.reorderText, { color: theme.primary }]}>Reorder</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -73,12 +84,10 @@ const styles = StyleSheet.create({
   orderId: {
     fontWeight: "700",
     fontSize: 16,
-    color: "#111827",
   },
   price: {
     fontWeight: "700",
     fontSize: 16,
-    color: "#111827",
   },
   badge: {
     alignSelf: "flex-start",
@@ -93,7 +102,7 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 13,
-    color: "#6B7280",
+    fontWeight: "600",
     marginBottom: 14,
   },
   actionsRow: {
@@ -114,14 +123,12 @@ const styles = StyleSheet.create({
   },
   reorderButton: {
     flex: 1,
-    backgroundColor: "#EFF6FF",
     height: 42,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   reorderText: {
-    color: "#2563EB",
     fontWeight: "700",
   },
 });

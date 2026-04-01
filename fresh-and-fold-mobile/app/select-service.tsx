@@ -35,17 +35,17 @@ const services: Array<{
     id: "dry",
     title: "Dry Clean",
     description: "Delicate garments",
-    meta: "Professional cleaning",
+    meta: "2.5x premium care pricing",
     icon: "dry-cleaning",
     estimate: "Within 2 days",
   },
   {
     id: "express",
     title: "Express",
-    description: "Same day delivery",
-    meta: "Priority processing",
+    description: "24 hour delivery",
+    meta: "3x priority pricing",
     icon: "bolt",
-    estimate: "Today by 9 PM",
+    estimate: "Within 24 hours",
   },
 ];
 
@@ -78,21 +78,6 @@ export default function SelectService() {
           Choose the laundry experience that fits your garments and delivery speed.
         </Text>
 
-        <View style={styles.cardsWrap}>
-          {services.map((service) => (
-            <ServiceCard
-              key={service.id}
-              title={service.title}
-              description={service.description}
-              meta={service.meta}
-              icon={service.icon}
-              selected={selected === service.id}
-              variant="selection"
-              onPress={() => setSelected(service.id)}
-            />
-          ))}
-        </View>
-
         <Card style={styles.estimateCard}>
           <View style={styles.estimateHeader}>
             <View style={[styles.estimateIconWrap, { backgroundColor: theme.primarySoft }]}>
@@ -110,6 +95,21 @@ export default function SelectService() {
               : "Premium handling, live updates, and doorstep convenience are included."}
           </Text>
         </Card>
+
+        <View style={styles.cardsWrap}>
+          {services.map((service) => (
+            <ServiceCard
+              key={service.id}
+              title={service.title}
+              description={service.description}
+              meta={service.meta}
+              icon={service.icon}
+              selected={selected === service.id}
+              variant="selection"
+              onPress={() => setSelected(service.id)}
+            />
+          ))}
+        </View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
@@ -166,11 +166,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   cardsWrap: {
+    marginTop: 18,
     marginBottom: 10,
   },
   estimateCard: {
     borderRadius: 24,
     padding: 20,
+    marginBottom: 14,
   },
   estimateHeader: {
     flexDirection: "row",

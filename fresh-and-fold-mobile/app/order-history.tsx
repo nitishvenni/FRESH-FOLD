@@ -19,6 +19,33 @@ import useOrders from "../hooks/useOrders";
 import { formatDate } from "../utils/formatDate";
 import { showToast } from "../utils/toast";
 
+const DEFAULT_REORDER_SLOT = "9 AM - 12 PM";
+
+const formatNextPickupDate = () =>
+  new Intl.DateTimeFormat("en-IN", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date());
+
+const buildReorderItems = (
+  items: Array<{
+    itemName: string;
+    quantity: number;
+  }> = []
+) =>
+  items.reduce<Record<string, number>>((acc, item) => {
+    const key = String(item.itemName || "").trim().toLowerCase();
+    const quantity = Number(item.quantity) || 0;
+
+    if (!key || quantity <= 0) {
+      return acc;
+    }
+
+    acc[key] = quantity;
+    return acc;
+  }, {});
+
 export default function OrderHistory() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -67,8 +94,8 @@ export default function OrderHistory() {
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top + 24 }]}>
       <Text style={[styles.header, { color: theme.text }]}>Order History</Text>
 
-		      <FlatList
-		        data={orders}
+	      <FlatList
+	        data={orders}
 		        keyExtractor={(item) => item._id}
 		        contentContainerStyle={{ paddingBottom: APP_TAB_BAR_HEIGHT + insets.bottom + 32 }}
             refreshControl={
@@ -80,11 +107,11 @@ export default function OrderHistory() {
                 tintColor={theme.primary}
               />
             }
-		        renderItem={({ item }) => (
+	        renderItem={({ item }) => (
           <OrderCard
-            order={{
-	              id: item._id.slice(-6),
-	              status: item.status,
+	            order={{
+		              id: item._id.slice(-6),
+		              status: item.status,
 	              total: item.totalAmount || 0,
 	              dateLabel: formatDate(item.createdAt),
 	            }}
@@ -95,13 +122,38 @@ export default function OrderHistory() {
                 params: { orderId: item._id },
               });
             }}
-            onReorder={() => {
-              void triggerImpactHaptic();
-              router.push("/select-service");
-            }}
-          />
-        )}
-      />
+	            onReorder={() => {
+	              void triggerImpactHaptic();
+
+                const reorderItems = buildReorderItems(item.items);
+                const address =
+                  item.addressId && typeof item.addressId === "object" ? item.addressId : null;
+                const addressId = address?._id ?? (typeof item.addressId === "string" ? item.addressId : undefined);
+
+                if (!item.service || Object.keys(reorderItems).length === 0 || !addressId) {
+                  showToast({
+                    type: "error",
+                    title: "Reorder unavailable",
+                    message: "This order is missing some details. Please create a fresh order.",
+                  });
+                  return;
+                }
+
+	              router.push({
+                  pathname: "/order-summary",
+                  params: {
+                    service: item.service,
+                    items: JSON.stringify(reorderItems),
+                    date: formatNextPickupDate(),
+                    slot: DEFAULT_REORDER_SLOT,
+                    addressId,
+                    addressName: address?.fullName ?? "Saved address",
+                  },
+                });
+	            }}
+	          />
+	        )}
+	      />
     </View>
   );
 }

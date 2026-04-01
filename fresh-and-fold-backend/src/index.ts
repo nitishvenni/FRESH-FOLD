@@ -45,8 +45,8 @@ const PRICING: Record<string, number> = {
 };
 const SERVICE_MULTIPLIER: Record<string, number> = {
   wash: 1,
-  dry: 1.25,
-  express: 1.15,
+  dry: 2.5,
+  express: 3,
 };
 const DELIVERY_CHARGE = 25;
 const FREE_DELIVERY_THRESHOLD = 299;
@@ -65,10 +65,11 @@ const ORDER_STEPS = [
 const SERVICE_TURNAROUND: Record<string, string> = {
   wash: "24-36 hours",
   dry: "36-48 hours",
-  express: "12-24 hours",
+  express: "24 hours",
 };
 
 const MOCK_PAYMENTS = String(process.env.MOCK_PAYMENTS || "").toLowerCase() === "true";
+const mongoUri = String(process.env.MONGO_URI || "").trim();
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 const msg91AuthKey = String(process.env.MSG91_AUTH_KEY || "").trim();
@@ -198,6 +199,16 @@ app.use(
 );
 app.use(express.json());
 
+app.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    app: "Fresh & Fold Backend",
+    docs: {
+      health: "/health",
+    },
+  });
+});
+
 app.get("/health", (_req, res) => {
   const mongoStateMap: Record<number, string> = {
     0: "disconnected",
@@ -206,12 +217,14 @@ app.get("/health", (_req, res) => {
     3: "disconnecting",
   };
 
-  res.json({
+  const databaseConnected = mongoose.connection.readyState === 1;
+
+  res.status(databaseConnected ? 200 : 503).json({
     status: "ok",
     app: "Fresh & Fold Backend",
     database: {
       state: mongoStateMap[mongoose.connection.readyState] || "unknown",
-      connected: mongoose.connection.readyState === 1,
+      connected: databaseConnected,
     },
     otp: {
       provider: msg91OtpEnabled ? "msg91" : "local",
@@ -1292,7 +1305,7 @@ app.post("/support/query", authMiddleware, supportQueryLimiter, async (req: Auth
       "Dry Clean",
       "Express",
     ].join(", ");
-    const pricingRule = "Item-wise pricing with service multipliers (wash x1.0, dry x1.25, express x1.15).";
+    const pricingRule = "Item-wise pricing with service multipliers (wash x1.0, dry x2.5, express x3.0).";
     const deliveryPolicy = "Delivery is free for orders >= Rs.299, otherwise Rs.25.";
     const workingHours = "Daily 8:00 AM - 9:00 PM.";
 
@@ -1541,8 +1554,24 @@ app.post("/addresses", authMiddleware, async (req: AuthRequest, res) => {
 });
 
 app.get("/admin/orders", adminMiddleware, async (_req, res) => {
-  const orders = await Order.find().sort({ createdAt: -1 });
-  res.json({ success: true, orders });
+  const orders = await Order.find()
+    .populate("userId", "mobile")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const serializedOrders = orders.map((order: any) => ({
+    ...order,
+    userId:
+      typeof order.userId === "object" && order.userId?._id
+        ? String(order.userId._id)
+        : String(order.userId || ""),
+    mobile:
+      typeof order.userId === "object" && order.userId?.mobile
+        ? String(order.userId.mobile)
+        : "",
+  }));
+
+  res.json({ success: true, orders: serializedOrders });
 });
 
 app.get("/admin/tickets", adminMiddleware, async (_req, res) => {
@@ -1881,13 +1910,17 @@ app.post("/admin/orders/:id/simulate",adminMiddleware, async (req, res) => {
 const PORT = Number(process.env.PORT) || 4000;
 
 mongoose
-  .connect(process.env.MONGO_URI as string)
+  .connect(mongoUri)
   .then(() => {
     console.log("✅ MongoDB Connected");
   })
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
   });
+
+if (!mongoUri) {
+  console.error("Missing MONGO_URI environment variable");
+}
 
 server.listen(PORT, () => {
   console.log(`Fresh & Fold backend running on port ${PORT}`);

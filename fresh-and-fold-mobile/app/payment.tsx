@@ -9,6 +9,7 @@ import PaymentMethodCard from "../components/PaymentMethodCard";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
+import { calculateSubtotal, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD } from "../utils/pricing";
 import { createOrder, getOrderPreview, getOrders } from "../services/orderService";
 import { createPaymentOrder, reportPaymentFailure, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
@@ -96,26 +97,9 @@ export default function Payment() {
     });
   };
 
-  const fallbackSubtotal = Object.keys(parsedItems).reduce((sum, key) => {
-    const pricing: Record<string, number> = {
-      shirt: 20,
-      tshirt: 18,
-      jeans: 40,
-      trousers: 35,
-      dress: 60,
-      jacket: 90,
-      sweater: 50,
-      bedsheet: 70,
-      pillowcover: 20,
-      towel: 22,
-      curtain: 110,
-      blanket: 140,
-    };
-
-    return sum + (pricing[key] || 0) * Number(parsedItems[key]);
-  }, 0);
-
-  const fallbackDelivery = fallbackSubtotal < 299 ? 25 : 0;
+  const fallbackSubtotal = calculateSubtotal(parsedItems, service);
+  const fallbackDelivery =
+    fallbackSubtotal < FREE_DELIVERY_THRESHOLD ? DELIVERY_CHARGE : 0;
   const [backendTotal, setBackendTotal] = useState<number>(fallbackSubtotal + fallbackDelivery);
   const [pricingRefreshing, setPricingRefreshing] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);

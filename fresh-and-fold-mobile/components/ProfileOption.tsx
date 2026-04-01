@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { colors, radius, shadows, spacing, typography } from "../theme/theme";
+import { useAppTheme } from "../hooks/useAppTheme";
+import { radius, shadows, spacing, typography } from "../theme/theme";
 
 type ProfileOptionProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -15,16 +16,26 @@ export default function ProfileOption({
   onPress,
   destructive = false,
 }: ProfileOptionProps) {
-  const iconColor = destructive ? colors.danger : colors.primary;
-  const textColor = destructive ? colors.danger : colors.textPrimary;
+  const { theme, isDark } = useAppTheme();
+  const iconColor = destructive ? theme.danger : theme.primary;
+  const textColor = destructive ? theme.danger : theme.text;
+  const iconBackground = destructive
+    ? isDark
+      ? "rgba(248, 113, 113, 0.16)"
+      : "#FEE2E2"
+    : theme.primarySoft;
 
   return (
-    <TouchableOpacity style={styles.row} activeOpacity={0.88} onPress={onPress}>
-      <View style={[styles.iconWrap, { backgroundColor: destructive ? "#FEE2E2" : "#EFF6FF" }]}>
+    <TouchableOpacity
+      style={[styles.row, { backgroundColor: theme.surface, borderColor: theme.border }]}
+      activeOpacity={0.88}
+      onPress={onPress}
+    >
+      <View style={[styles.iconWrap, { backgroundColor: iconBackground }]}>
         <Ionicons name={icon} size={20} color={iconColor} />
       </View>
       <Text style={[styles.text, { color: textColor }]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+      <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
     </TouchableOpacity>
   );
 }
@@ -33,10 +44,10 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.card,
     padding: spacing.md,
     borderRadius: radius.md,
     marginBottom: spacing.sm,
+    borderWidth: 1,
     ...shadows.card,
   },
   iconWrap: {

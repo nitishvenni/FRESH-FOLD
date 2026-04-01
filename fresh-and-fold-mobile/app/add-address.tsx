@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -9,8 +10,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
+import MapView, { Marker, MapPressEvent, Region } from "react-native-maps";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -24,6 +27,12 @@ import { showToast } from "../utils/toast";
 
 const ADDRESSES_CACHE_KEY = "addressesCache";
 const SELECTED_ADDRESS_ID_KEY = "selectedAddressId";
+const DEFAULT_REGION: Region = {
+  latitude: 17.385,
+  longitude: 78.4867,
+  latitudeDelta: 0.01,
+  longitudeDelta: 0.01,
+};
 
 type FieldCardProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -67,8 +76,15 @@ export default function AddAddress() {
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [pincode, setPincode] = useState("");
+  const [extraDetails, setExtraDetails] = useState("");
   const [saving, setSaving] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region>(DEFAULT_REGION);
+  const [selectedCoordinate, setSelectedCoordinate] = useState({
+    latitude: DEFAULT_REGION.latitude,
+    longitude: DEFAULT_REGION.longitude,
+  });
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -123,6 +139,107 @@ export default function AddAddress() {
     return null;
   };
 
+  const applyReverseGeocode = async (latitude: number, longitude: number) => {
+    try {
+      const [result] = await Location.reverseGeocodeAsync({ latitude, longitude });
+
+      if (!result) {
+        showToast({
+          type: "info",
+          title: "Location found",
+          message: "We couldn't read the full address. Please fill the remaining details manually.",
+        });
+        return;
+      }
+
+      const streetParts = [
+        result.name,
+        result.street,
+        result.district,
+        result.subregion,
+      ]
+        .map((part) => String(part || "").trim())
+        .filter(Boolean)
+        .filter((part, index, parts) => parts.indexOf(part) === index);
+
+      if (streetParts.length > 0) {
+        setStreet(streetParts.join(", "));
+      }
+
+      const bestCity = result.city || result.subregion || result.region || "";
+      if (bestCity) {
+        setCity(bestCity);
+      }
+
+      if (result.postalCode) {
+        setPincode(String(result.postalCode).replace(/\D/g, "").slice(0, 6));
+      }
+
+      showToast({
+        type: "success",
+        title: "Address updated",
+        message: "Location details were added. You can fine-tune the extra details below.",
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  };
+
+  const updateMapLocation = async (latitude: number, longitude: number) => {
+    setSelectedCoordinate({ latitude, longitude });
+    setMapRegion((prev) => ({
+      ...prev,
+      latitude,
+      longitude,
+    }));
+    await applyReverseGeocode(latitude, longitude);
+  };
+
+  const requestCurrentLocation = async () => {
+    try {
+      setLocationLoading(true);
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (permission.status !== "granted") {
+        showToast({
+          type: "error",
+          title: "Location permission needed",
+          message: "Allow location access to auto-fill your address from the map.",
+        });
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const nextLatitude = current.coords.latitude;
+      const nextLongitude = current.coords.longitude;
+
+      setMapRegion({
+        latitude: nextLatitude,
+        longitude: nextLongitude,
+        latitudeDelta: 0.008,
+        longitudeDelta: 0.008,
+      });
+      setSelectedCoordinate({
+        latitude: nextLatitude,
+        longitude: nextLongitude,
+      });
+
+      await applyReverseGeocode(nextLatitude, nextLongitude);
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleMapPress = (event: MapPressEvent) => {
+    const { latitude, longitude } = event.nativeEvent.coordinate;
+    void updateMapLocation(latitude, longitude);
+  };
+
   const saveAddress = async () => {
     const validationMessage = validateAddress();
     if (validationMessage) {
@@ -141,7 +258,7 @@ export default function AddAddress() {
         body: {
           fullName: fullName.trim(),
           phone: phone.trim(),
-          street: street.trim(),
+          street: [extraDetails.trim(), street.trim()].filter(Boolean).join(", "),
           city: city.trim(),
           pincode: pincode.trim(),
         },
@@ -194,6 +311,54 @@ export default function AddAddress() {
           >
             <Text style={[styles.title, { color: theme.text }]}>Add Address</Text>
 
+            <Card style={[styles.sectionCard, styles.mapCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIconWrap, { backgroundColor: theme.primarySoft }]}>
+                  <Ionicons name="navigate-outline" size={18} color={theme.primary} />
+                </View>
+                <View style={styles.sectionHeaderText}>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Pick on map</Text>
+                  <Text style={[styles.sectionSubtitle, { color: theme.textMuted }]}>
+                    Give location access and we will auto-fill the main address like a delivery app.
+                  </Text>
+                </View>
+              </View>
+
+              <MapView
+                style={styles.map}
+                region={mapRegion}
+                onPress={handleMapPress}
+              >
+                <Marker
+                  coordinate={selectedCoordinate}
+                  draggable
+                  onDragEnd={(event) => {
+                    const { latitude, longitude } = event.nativeEvent.coordinate;
+                    void updateMapLocation(latitude, longitude);
+                  }}
+                />
+              </MapView>
+
+              <View style={styles.mapActions}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  style={[styles.locationButton, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    void requestCurrentLocation();
+                  }}
+                >
+                  <Ionicons name="locate-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.locationButtonText}>
+                    {locationLoading ? "Locating..." : "Use Current Location"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.mapHint, { color: theme.textMuted }]}>
+                Tap anywhere on the map or drag the pin to refine the address, then add flat or landmark details below.
+              </Text>
+            </Card>
+
             <Card style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.sectionHeader}>
                 <View style={[styles.sectionIconWrap, { backgroundColor: theme.primarySoft }]}>
@@ -226,6 +391,12 @@ export default function AddAddress() {
                 placeholder="Street / House / Area"
                 value={street}
                 onChangeText={setStreet}
+              />
+              <FieldCard
+                icon="albums-outline"
+                placeholder="Flat / Landmark / Extra details"
+                value={extraDetails}
+                onChangeText={setExtraDetails}
               />
               <FieldCard
                 icon="business-outline"
@@ -282,6 +453,10 @@ const styles = StyleSheet.create({
   },
   sectionCard: {
     padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  mapCard: {
+    overflow: "hidden",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -311,6 +486,32 @@ const styles = StyleSheet.create({
   },
   inputCard: {
     marginBottom: spacing.sm + 2,
+  },
+  map: {
+    height: 220,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
+  },
+  mapActions: {
+    marginBottom: spacing.sm,
+  },
+  locationButton: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  locationButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontFamily: typography.semibold,
+  },
+  mapHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: typography.body,
   },
   footer: {
     paddingHorizontal: spacing.lg,
