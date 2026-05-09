@@ -27,9 +27,17 @@ const SELECTED_ADDRESS_ID_KEY = "selectedAddressId";
 type Address = {
   _id: string;
   fullName: string;
+  phone?: string;
   street: string;
   city: string;
   pincode: string;
+  houseNumber?: string;
+  building?: string;
+  locality?: string;
+  addressType?: string;
+  instructions?: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 export default function SelectAddress() {
@@ -163,6 +171,13 @@ export default function SelectAddress() {
               onPress={() => {
                 void triggerSelectionHaptic();
                 setSelected(address._id);
+              }}
+              onEdit={() => {
+                void triggerImpactHaptic();
+                router.push({
+                  pathname: "/add-address",
+                  params: { service, items, date, slot, addressId: address._id },
+                });
               }}
             />
           ))

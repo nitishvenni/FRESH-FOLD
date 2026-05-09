@@ -12,6 +12,17 @@ const addressSchema = new mongoose.Schema(
     street: String,
     city: String,
     pincode: String,
+    houseNumber: String,
+    building: String,
+    locality: String,
+    addressType: {
+      type: String,
+      enum: ["House", "Office", "Other"],
+      default: "House",
+    },
+    instructions: String,
+    latitude: Number,
+    longitude: Number,
   },
   { timestamps: true }
 );

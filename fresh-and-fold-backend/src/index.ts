@@ -1519,6 +1519,22 @@ app.post("/addresses", authMiddleware, async (req: AuthRequest, res) => {
     const street = String(req.body?.street || "").trim();
     const city = String(req.body?.city || "").trim();
     const pincode = String(req.body?.pincode || "").trim();
+    const houseNumber = String(req.body?.houseNumber || "").trim();
+    const building = String(req.body?.building || "").trim();
+    const locality = String(req.body?.locality || "").trim();
+    const requestedAddressType = String(req.body?.addressType || "House").trim();
+    const addressType = ["House", "Office", "Other"].includes(requestedAddressType)
+      ? requestedAddressType
+      : "House";
+    const instructions = String(req.body?.instructions || "").trim();
+    const latitude =
+      typeof req.body?.latitude === "number" && Number.isFinite(req.body.latitude)
+        ? req.body.latitude
+        : undefined;
+    const longitude =
+      typeof req.body?.longitude === "number" && Number.isFinite(req.body.longitude)
+        ? req.body.longitude
+        : undefined;
 
     if (!fullName || !phone || !street || !city || !pincode) {
       return res.status(400).json({ message: "All address fields are required" });
@@ -1543,6 +1559,13 @@ app.post("/addresses", authMiddleware, async (req: AuthRequest, res) => {
       street,
       city,
       pincode,
+      houseNumber,
+      building,
+      locality,
+      addressType,
+      instructions,
+      latitude,
+      longitude,
     });
 
     await address.save();
@@ -1550,6 +1573,78 @@ app.post("/addresses", authMiddleware, async (req: AuthRequest, res) => {
     res.json({ success: true, address });
   } catch (error) {
     res.status(500).json({ message: "Failed to create address" });
+  }
+});
+
+app.put("/addresses/:addressId", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const fullName = String(req.body?.fullName || "").trim();
+    const phone = String(req.body?.phone || "").trim();
+    const street = String(req.body?.street || "").trim();
+    const city = String(req.body?.city || "").trim();
+    const pincode = String(req.body?.pincode || "").trim();
+    const houseNumber = String(req.body?.houseNumber || "").trim();
+    const building = String(req.body?.building || "").trim();
+    const locality = String(req.body?.locality || "").trim();
+    const requestedAddressType = String(req.body?.addressType || "House").trim();
+    const addressType = ["House", "Office", "Other"].includes(requestedAddressType)
+      ? requestedAddressType
+      : "House";
+    const instructions = String(req.body?.instructions || "").trim();
+    const latitude =
+      typeof req.body?.latitude === "number" && Number.isFinite(req.body.latitude)
+        ? req.body.latitude
+        : undefined;
+    const longitude =
+      typeof req.body?.longitude === "number" && Number.isFinite(req.body.longitude)
+        ? req.body.longitude
+        : undefined;
+
+    if (!fullName || !phone || !street || !city || !pincode) {
+      return res.status(400).json({ message: "All address fields are required" });
+    }
+
+    if (!/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ message: "Invalid phone number" });
+    }
+
+    if (!/^\d{6}$/.test(pincode)) {
+      return res.status(400).json({ message: "Invalid pincode" });
+    }
+
+    if (fullName.length < 2) {
+      return res.status(400).json({ message: "Invalid full name" });
+    }
+
+    const address = await Address.findOneAndUpdate(
+      {
+        _id: req.params.addressId,
+        userId: req.user.userId,
+      },
+      {
+        fullName,
+        phone,
+        street,
+        city,
+        pincode,
+        houseNumber,
+        building,
+        locality,
+        addressType,
+        instructions,
+        latitude,
+        longitude,
+      },
+      { new: true }
+    );
+
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
+    res.json({ success: true, address });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update address" });
   }
 });
 
