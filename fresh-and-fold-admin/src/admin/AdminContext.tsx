@@ -46,6 +46,24 @@ type AdminContextValue = {
 
 const AdminContext = createContext<AdminContextValue | null>(null);
 
+async function readApiResponse(response: Response): Promise<{ success?: boolean; token?: string; message?: string }> {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      message: `The server returned an unexpected response (${response.status}).`,
+    };
+  }
+}
+
+function getRequestErrorMessage(action: string, error: unknown) {
+  const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
+  return `${action} could not reach ${API_BASE_URL}.${detail}`;
+}
+
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -361,7 +379,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      const data = await readApiResponse(res);
       if (!res.ok || !data.success || !data.token) {
         setError(data.message || "Invalid credentials");
         return false;
@@ -370,8 +388,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("adminToken", cleanToken);
       setAdminToken(cleanToken);
       return true;
-    } catch {
-      setError("Login failed");
+    } catch (error) {
+      setError(getRequestErrorMessage("Login", error));
       return false;
     }
   }, []);
@@ -384,14 +402,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, newPassword, resetKey }),
       });
-      const data = await res.json();
+      const data = await readApiResponse(res);
       if (!res.ok || !data.success) {
         setError(data.message || "Password reset failed");
         return false;
       }
       return true;
-    } catch {
-      setError("Password reset failed");
+    } catch (error) {
+      setError(getRequestErrorMessage("Password reset", error));
       return false;
     }
   }, []);
