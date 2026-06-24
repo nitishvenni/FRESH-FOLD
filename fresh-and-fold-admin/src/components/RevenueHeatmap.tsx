@@ -8,10 +8,6 @@ type HeatmapValue = {
   revenue: number;
 };
 
-function toIsoDate(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
 export default function RevenueHeatmap({ values }: { values: HeatmapValue[] }) {
   const now = new Date();
   const startDate = new Date(now.getFullYear(), 0, 1);
@@ -36,7 +32,7 @@ export default function RevenueHeatmap({ values }: { values: HeatmapValue[] }) {
           startDate={startDate}
           endDate={now}
           values={values}
-          classForValue={(value) => {
+          classForValue={(value?: HeatmapValue) => {
             if (!value || value.revenue <= 0) {
               return "color-empty";
             }
@@ -46,7 +42,7 @@ export default function RevenueHeatmap({ values }: { values: HeatmapValue[] }) {
             if (intensity >= 0.35) return "color-gold-2";
             return "color-gold-1";
           }}
-          tooltipDataAttrs={(value) => ({
+          tooltipDataAttrs={(value?: HeatmapValue) => ({
             "data-tip": value?.date ? `${value.date}: Rs.${value.revenue} from ${value.count} orders` : "No revenue",
           })}
           showWeekdayLabels

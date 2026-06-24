@@ -80,6 +80,7 @@ export default function OrderDrawer({
             </div>
 
             <div style={{ display: "grid", gap: 14, padding: 18, borderRadius: 18, background: "rgba(255,255,255,0.04)" }}>
+              <DrawerRow label="Customer Phone" value={order.mobile || "-"} />
               <DrawerRow label="Service" value={order.service || "Laundry"} />
               <DrawerRow label="Total" value={`Rs.${order.totalAmount}`} />
               <DrawerRow label="Payment Ref" value={order.paymentId || "-"} />

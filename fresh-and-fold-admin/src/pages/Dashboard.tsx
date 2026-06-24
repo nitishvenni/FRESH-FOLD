@@ -1,9 +1,9 @@
 import { glassCard, mutedTextStyle } from "../admin/styles";
 import { useAdminData } from "../admin/AdminContext";
+import DashboardCards from "../components/DashboardCards";
 import LiveActivityFeed from "../components/LiveActivityFeed";
 import RevenueChart from "../components/RevenueChart";
 import Skeleton from "../components/Skeleton";
-import StatCard from "../components/StatCard";
 
 export default function DashboardPage() {
   const {
@@ -63,21 +63,57 @@ export default function DashboardPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
               gap: 16,
             }}
           >
-            {loadingOrders ? (
-              Array.from({ length: 6 }, (_, index) => <Skeleton key={index} height={134} radius={18} />)
+            <DashboardCards
+              loading={loadingOrders}
+              stats={{
+                totalOrders,
+                totalRevenue,
+                activeOrders,
+                deliveredOrders,
+              }}
+            />
+            {!loadingOrders ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 16,
+                }}
+              >
+                <div style={{ ...glassCard, padding: 18 }}>
+                  <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                    Open Tickets
+                  </p>
+                  <p style={{ margin: "12px 0 6px", fontSize: 30, fontWeight: 800 }}>{openTickets}</p>
+                  <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>
+                    Customer issues that still need admin action
+                  </p>
+                </div>
+                <div style={{ ...glassCard, padding: 18 }}>
+                  <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                    New Alerts
+                  </p>
+                  <p style={{ margin: "12px 0 6px", fontSize: 30, fontWeight: 800 }}>{newTicketAlerts}</p>
+                  <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>
+                    Fresh support changes detected by the live feed
+                  </p>
+                </div>
+              </div>
             ) : (
-              <>
-                <StatCard title="Revenue" value={totalRevenue} prefix="Rs." detail="Collected across verified payments" />
-                <StatCard title="Orders" value={totalOrders} detail="Total orders tracked in admin" />
-                <StatCard title="Active Orders" value={activeOrders} detail="Laundry jobs currently moving" />
-                <StatCard title="Delivered" value={deliveredOrders} detail="Completed successfully" />
-                <StatCard title="Open Tickets" value={openTickets} detail="Customer issues requiring review" />
-                <StatCard title="New Alerts" value={newTicketAlerts} detail="Fresh support queue changes" />
-              </>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 16,
+                }}
+              >
+                {Array.from({ length: 2 }, (_, index) => (
+                  <Skeleton key={index} height={134} radius={18} />
+                ))}
+              </div>
             )}
           </div>
         </div>

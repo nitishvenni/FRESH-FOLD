@@ -1,5 +1,7 @@
 export interface Order {
   _id: string;
+  userId: string;
+  mobile: string;
   service: string;
   totalAmount: number;
   paymentId: string;

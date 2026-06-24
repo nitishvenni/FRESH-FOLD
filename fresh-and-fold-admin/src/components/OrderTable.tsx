@@ -55,6 +55,7 @@ export default function OrderTable({
         <thead>
           <tr>
             <th style={thStyle}>ID</th>
+            <th style={thStyle}>Phone</th>
             <th style={thStyle}>Service</th>
             <th style={thStyle}>Total</th>
             <th style={thStyle}>Payment Ref</th>
@@ -79,10 +80,11 @@ export default function OrderTable({
                 cursor: "pointer",
                 background: selectedOrderId === order._id ? "rgba(242,169,73,0.09)" : "transparent",
               }}
-            >
-              <td style={tdStyle}>{order._id.slice(-6)}</td>
-              <td style={tdStyle}>{order.service || "-"}</td>
-              <td style={tdStyle}>Rs.{order.totalAmount}</td>
+	            >
+	              <td style={tdStyle}>{order._id.slice(-6)}</td>
+	              <td style={tdStyle}>{order.mobile || "-"}</td>
+	              <td style={tdStyle}>{order.service || "-"}</td>
+	              <td style={tdStyle}>Rs.{order.totalAmount}</td>
               <td style={tdStyle}>
 	                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
 	                  <span>pay_{order.paymentId ? order.paymentId.slice(-8) : "-"}</span>

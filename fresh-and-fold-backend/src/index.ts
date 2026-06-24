@@ -89,6 +89,11 @@ const supportQueryLimiter = createRateLimit({
   max: 20,
   namespace: "support-query",
 });
+const adminPasswordResetLimiter = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  namespace: "admin-password-reset",
+});
 
 const supportEscalateLimiter = createRateLimit({
   windowMs: 10 * 60 * 1000,
@@ -707,11 +712,21 @@ const adminMiddleware = (req: any, res: any, next: any) => {
 };
 
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const getAdminEmailFilter = (email: string) => ({
+  email: { $regex: new RegExp(`^${escapeRegExp(email)}$`, "i") },
+});
+
   app.post("/admin/register", async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
 
-    const existing = await Admin.findOne({ email });
+    if (!normalizedEmail || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    const existing = await Admin.findOne(getAdminEmailFilter(normalizedEmail));
     if (existing) {
       return res.status(400).json({ message: "Admin already exists" });
     }
@@ -719,7 +734,7 @@ const adminMiddleware = (req: any, res: any, next: any) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const admin = new Admin({
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
     });
 
@@ -735,8 +750,9 @@ const adminMiddleware = (req: any, res: any, next: any) => {
 app.post("/admin/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
 
-    const admin = await Admin.findOne({ email });
+    const admin = await Admin.findOne(getAdminEmailFilter(normalizedEmail));
     if (!admin) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
@@ -756,6 +772,47 @@ app.post("/admin/login", async (req, res) => {
 
   } catch (error) {
     res.status(500).json({ message: "Admin login failed" });
+  }
+});
+
+app.post("/admin/forgot-password", adminPasswordResetLimiter, async (req, res) => {
+  try {
+    const { email, newPassword, resetKey } = req.body;
+    const configuredResetKey = String(process.env.ADMIN_RESET_KEY || "").trim();
+
+    if (!configuredResetKey) {
+      return res.status(503).json({ message: "Admin password reset is not configured" });
+    }
+
+    if (String(resetKey || "").trim() !== configuredResetKey) {
+      return res.status(401).json({ message: "Invalid reset key" });
+    }
+
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const passwordValue = String(newPassword || "");
+
+    if (!normalizedEmail || !passwordValue) {
+      return res.status(400).json({ message: "Email and new password are required" });
+    }
+
+    if (passwordValue.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    const hashedPassword = await bcrypt.hash(passwordValue, 10);
+    const admin = await Admin.findOneAndUpdate(
+      getAdminEmailFilter(normalizedEmail),
+      { password: hashedPassword },
+      { new: true }
+    );
+
+    if (!admin) {
+      return res.status(404).json({ message: "Admin account not found" });
+    }
+
+    res.json({ success: true, message: "Admin password updated" });
+  } catch (error) {
+    res.status(500).json({ message: "Admin password reset failed" });
   }
 });
 

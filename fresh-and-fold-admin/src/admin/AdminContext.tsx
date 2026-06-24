@@ -30,6 +30,7 @@ type AdminContextValue = {
   overdueTicketsCount: number;
   chartData: Array<{ date: string; revenue: number }>;
   login: (email: string, password: string) => Promise<boolean>;
+  resetAdminPassword: (email: string, newPassword: string, resetKey: string) => Promise<boolean>;
   logout: () => void;
   updateOrderStatus: (id: string, status: string) => Promise<void>;
   simulateOrder: (id: string) => Promise<void>;
@@ -375,6 +376,26 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const resetAdminPassword = useCallback(async (email: string, newPassword: string, resetKey: string) => {
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, newPassword, resetKey }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || "Password reset failed");
+        return false;
+      }
+      return true;
+    } catch {
+      setError("Password reset failed");
+      return false;
+    }
+  }, []);
+
   const updateOrderStatus = useCallback(async (id: string, status: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/orders/${id}/status`, {
@@ -506,6 +527,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     overdueTicketsCount,
     chartData,
     login,
+    resetAdminPassword,
     logout,
     updateOrderStatus,
     simulateOrder,
@@ -547,6 +569,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     overdueTicketsCount,
     chartData,
     login,
+    resetAdminPassword,
     logout,
     updateOrderStatus,
     simulateOrder,

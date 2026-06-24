@@ -1,44 +1,58 @@
 import { useMemo, useState } from "react";
 import { glassCard, inputStyle, selectStyle } from "../admin/styles";
 import { useAdminData } from "../admin/AdminContext";
-import { ORDER_STEPS } from "../admin/constants";
 import OrderDrawer from "../components/OrderDrawer";
 import OrderTable from "../components/OrderTable";
 import type { Order } from "../admin/types";
 
 export default function OrdersPage() {
   const { orders, loadingOrders, updateOrderStatus, simulateOrder } = useAdminData();
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
+      const normalizedSearch = search.trim().toLowerCase();
       const matchesQuery =
-        !query ||
-        order._id.toLowerCase().includes(query.toLowerCase()) ||
-        String(order.service || "").toLowerCase().includes(query.toLowerCase());
-      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+        !normalizedSearch ||
+        order._id.toLowerCase().includes(normalizedSearch) ||
+        String(order.service || "").toLowerCase().includes(normalizedSearch) ||
+        String(order.mobile || "").includes(normalizedSearch);
+
+      const matchesStatus =
+        statusFilter === "All" ||
+        (statusFilter === "Pending" &&
+          (order.status === "Scheduled" || order.status === "Received at Facility")) ||
+        (statusFilter === "Picked" &&
+          ["Picked Up", "Washing", "Ironing", "Out for Delivery"].includes(order.status)) ||
+        (statusFilter === "Delivered" && order.status === "Delivered");
+
       return matchesQuery && matchesStatus;
     });
-  }, [orders, query, statusFilter]);
+  }, [orders, search, statusFilter]);
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
-      <div style={{ ...glassCard, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+      <div
+        style={{
+          ...glassCard,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: 14,
+        }}
+      >
         <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by order ID or service"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by phone, order ID, or service"
           style={inputStyle}
         />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
-          <option value="all">All statuses</option>
-          {ORDER_STEPS.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
+          <option value="All">All</option>
+          <option value="Pending">Pending</option>
+          <option value="Picked">Picked</option>
+          <option value="Delivered">Delivered</option>
         </select>
       </div>
 
