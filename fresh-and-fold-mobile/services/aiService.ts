@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../constants/api";
 import type {
+  FabricIdentificationResult,
   GarmentRecognitionResult,
 } from "../types/ai";
 import { AiServiceError, parseAiErrorResponse } from "./aiErrors";
@@ -77,6 +78,44 @@ export const analyzeGarments = async (
     }
 
     return payload as GarmentRecognitionResult;
+  } catch (error) {
+    if (error instanceof AiServiceError || isAbortError(error)) {
+      throw error;
+    }
+
+    throw new AiServiceError("Network error. Please check your connection and try again.", {
+      code: "AI_REQUEST_FAILED",
+      retryable: true,
+    });
+  }
+};
+
+/** Uploads one existing normalized image to the standalone Fabric Identification capability. */
+export const analyzeFabric = async (
+  image: AiUploadImage,
+  signal?: AbortSignal
+): Promise<FabricIdentificationResult> => {
+  try {
+    const token = await getAuthToken();
+    const formData = new FormData();
+    formData.append("image", image as unknown as Blob);
+
+    const response = await fetch(`${API_BASE_URL}/ai/fabric/analyze`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: formData,
+      signal,
+    });
+    const payload = (await response.json().catch(() => ({}))) as unknown;
+
+    if (!response.ok) {
+      throw parseAiErrorResponse(payload, {
+        status: response.status,
+        requestId: response.headers.get("x-request-id") || undefined,
+      });
+    }
+
+    return payload as FabricIdentificationResult;
   } catch (error) {
     if (error instanceof AiServiceError || isAbortError(error)) {
       throw error;

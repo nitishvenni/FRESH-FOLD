@@ -6,6 +6,12 @@ export const itemKeys = [
   "dress",
   "jacket",
   "sweater",
+  "shorts",
+  "leggings",
+  "skirt",
+  "kurta",
+  "saree",
+  "hoodie",
   "bedsheet",
   "pillowcover",
   "towel",
@@ -28,6 +34,12 @@ export const clothingItems: Array<{ key: ItemKey; name: string }> = [
   { key: "dress", name: "Dress" },
   { key: "jacket", name: "Jacket" },
   { key: "sweater", name: "Sweater" },
+  { key: "shorts", name: "Shorts" },
+  { key: "leggings", name: "Leggings" },
+  { key: "skirt", name: "Skirt" },
+  { key: "kurta", name: "Kurta" },
+  { key: "saree", name: "Saree" },
+  { key: "hoodie", name: "Hoodie" },
 ];
 
 export const homeItems: Array<{ key: ItemKey; name: string }> = [

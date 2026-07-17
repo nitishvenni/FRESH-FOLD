@@ -22,6 +22,7 @@ import PaymentAttempt from "./models/PaymentAttempt";
 import { authMiddleware, AuthRequest } from "./middleware/authMiddleware";
 import { createRateLimit } from "./middleware/rateLimit";
 import { registerGarmentRecognitionRoutes } from "./ai/garmentRecognition";
+import { registerFabricIdentificationRoutes } from "./ai/fabricIdentification";
 import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
 import { sendPushNotification } from "./utils/pushNotifications";
 import {
@@ -39,6 +40,12 @@ const PRICING: Record<string, number> = {
   dress: 60,
   jacket: 90,
   sweater: 50,
+  shorts: 40,
+  leggings: 45,
+  skirt: 55,
+  kurta: 60,
+  saree: 100,
+  hoodie: 90,
   bedsheet: 70,
   pillowcover: 20,
   towel: 22,
@@ -210,7 +217,10 @@ app.use(
   "/ai",
   createAiRouter({
     rateLimit: createConfiguredAiRateLimit(),
-    registerRoutes: registerGarmentRecognitionRoutes,
+    registerRoutes: (router) => {
+      registerGarmentRecognitionRoutes(router);
+      registerFabricIdentificationRoutes(router);
+    },
   })
 );
 

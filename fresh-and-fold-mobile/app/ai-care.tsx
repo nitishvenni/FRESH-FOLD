@@ -31,6 +31,21 @@ export default function AICareScreen() {
           <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo to identify garments for your review.</Text>
         </Card>
       </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Open Fabric Identification"
+        activeOpacity={0.86}
+        style={styles.secondaryCardPressable}
+        onPress={() => router.push("/fabric-scan" as never)}
+      >
+        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
+            <MaterialIcons name="texture" size={24} color={theme.primary} />
+          </View>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Fabric Identification</Text>
+          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo for cautious fabric and care guidance.</Text>
+        </Card>
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.primary }]} onPress={() => router.replace("/home")}>
         <Text style={styles.backText}>Back to Home</Text>
       </TouchableOpacity>
@@ -45,6 +60,7 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: 8, fontSize: 15 },
   card: { width: "100%", alignItems: "center", paddingVertical: 28 },
   cardPressable: { width: "100%", marginTop: 38 },
+  secondaryCardPressable: { width: "100%", marginTop: 14 },
   iconWrap: { width: 54, height: 54, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   cardTitle: { marginTop: 14, fontSize: 18, fontWeight: "700" },
   cardCopy: { marginTop: 8, fontSize: 14, lineHeight: 20, textAlign: "center", maxWidth: 260 },

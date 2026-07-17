@@ -7,7 +7,7 @@ export const AI_IMAGE_JPEG_COMPRESSION = 0.8;
 
 type ImageSource = "camera" | "gallery";
 
-export type GarmentImageSelection =
+export type AiImageSelection =
   | { kind: "selected"; image: AiUploadImage }
   | { kind: "cancelled" }
   | { kind: "permission_denied"; source: ImageSource };
@@ -50,9 +50,9 @@ const normalizeGarmentImage = async (
 };
 
 /** Selects one image and produces a transient, normalized JPEG for Phase B upload. */
-export const selectGarmentImage = async (
+export const selectAiImage = async (
   source: ImageSource
-): Promise<GarmentImageSelection> => {
+): Promise<AiImageSelection> => {
   const permission =
     source === "camera"
       ? await ImagePicker.requestCameraPermissionsAsync()
@@ -73,3 +73,6 @@ export const selectGarmentImage = async (
 
   return { kind: "selected", image: await normalizeGarmentImage(result.assets[0]) };
 };
+
+/** Backwards-compatible Smart Scan export; its behavior remains unchanged. */
+export const selectGarmentImage = selectAiImage;

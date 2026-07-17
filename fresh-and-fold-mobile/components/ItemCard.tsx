@@ -1,27 +1,45 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { FontAwesome6, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { triggerSelectionHaptic } from "../utils/haptics";
 
-const ICONS = {
-  shirt: "tshirt-crew",
-  tshirt: "tshirt-crew-outline",
-  jeans: "hanger",
-  trousers: "hanger",
-  dress: "tshirt-crew",
-  jacket: "coat-rack",
-  sweater: "tshirt-crew",
-  bedsheet: "bed",
-  pillowcover: "bed-outline",
-  towel: "shower",
+const MATERIAL_ICONS = {
+  shirt: "tshirt-v",
+  tshirt: "tshirt-crew",
+  jeans: "layers-triple",
+  trousers: "layers-outline",
+  shorts: "underwear-outline",
+  leggings: "layers",
+  kurta: "tshirt-v-outline",
+  sweater: "tshirt-crew-outline",
+  hoodie: "tshirt-v-outline",
+  bedsheet: "bed-queen-outline",
+  towel: "layers-triple",
   curtain: "curtains",
-  blanket: "bed",
+  blanket: "bed-king-outline",
 } as const;
+
+// Font Awesome 6 fills the small gaps where Material Community does not ship a
+// recognisable dress, draped-garment, or pillow glyph. Both families are part
+// of the already-installed Expo vector-icon bundle.
+const FONT_AWESOME_ICONS = {
+  skirt: "person-half-dress",
+  dress: "person-dress",
+  saree: "person-half-dress",
+  jacket: "vest",
+  pillowcover: "mattress-pillow",
+} as const;
+
+type CatalogIconKey = keyof typeof MATERIAL_ICONS | keyof typeof FONT_AWESOME_ICONS;
+
+const isFontAwesomeIcon = (
+  itemKey: CatalogIconKey,
+): itemKey is keyof typeof FONT_AWESOME_ICONS => itemKey in FONT_AWESOME_ICONS;
 
 type ItemCardProps = {
   item: {
-    key: keyof typeof ICONS;
+    key: CatalogIconKey;
     name: string;
     price: number;
   };
@@ -54,7 +72,19 @@ export default function ItemCard({
         <View style={styles.row}>
           <View style={styles.leftSide}>
             <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-              <MaterialCommunityIcons name={ICONS[item.key]} size={26} color={theme.primary} />
+              {isFontAwesomeIcon(item.key) ? (
+                <FontAwesome6
+                  name={FONT_AWESOME_ICONS[item.key]}
+                  size={26}
+                  color={theme.primary}
+                />
+              ) : (
+                <MaterialCommunityIcons
+                  name={MATERIAL_ICONS[item.key]}
+                  size={26}
+                  color={theme.primary}
+                />
+              )}
             </View>
             <View style={styles.copy}>
               <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>

@@ -99,6 +99,36 @@ describe("garment recognition endpoint", () => {
     });
   });
 
+  it("maps approved Phase C.1 catalog expansions while preserving the original labels", async () => {
+    const provider = providerWithOutput({
+      status: "complete",
+      detections: [
+        { detectedLabel: "Black Shorts", quantity: 1, confidence: 0.96 },
+        { detectedLabel: "Blue Leggings", quantity: 1, confidence: 0.95 },
+        { detectedLabel: "Printed Skirt", quantity: 1, confidence: 0.94 },
+        { detectedLabel: "White Kurta", quantity: 1, confidence: 0.93 },
+        { detectedLabel: "Red Saree", quantity: 1, confidence: 0.92 },
+        { detectedLabel: "Black Hoodie", quantity: 1, confidence: 0.91 },
+        { detectedLabel: "Grey Sweatshirt", quantity: 1, confidence: 0.9 },
+      ],
+      warnings: [],
+    });
+
+    const response = await postImage(createGarmentApp(provider)).expect(200);
+
+    expect(response.body.detections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ detectedLabel: "Black Shorts", catalogItemId: "shorts", mappingStatus: "mapped" }),
+        expect.objectContaining({ detectedLabel: "Blue Leggings", catalogItemId: "leggings", mappingStatus: "mapped" }),
+        expect.objectContaining({ detectedLabel: "Printed Skirt", catalogItemId: "skirt", mappingStatus: "mapped" }),
+        expect.objectContaining({ detectedLabel: "White Kurta", catalogItemId: "kurta", mappingStatus: "mapped" }),
+        expect.objectContaining({ detectedLabel: "Red Saree", catalogItemId: "saree", mappingStatus: "mapped" }),
+        expect.objectContaining({ detectedLabel: "Black Hoodie", catalogItemId: "hoodie", mappingStatus: "mapped" }),
+        expect.objectContaining({ detectedLabel: "Grey Sweatshirt", catalogItemId: "sweater", mappingStatus: "mapped" }),
+      ])
+    );
+  });
+
   it.each(["no_match", "unreadable"] as const)("returns honest %s results", async (status) => {
     const provider = providerWithOutput({ status, detections: [], warnings: ["No usable garment detection."] });
     const response = await postImage(createGarmentApp(provider)).expect(200);

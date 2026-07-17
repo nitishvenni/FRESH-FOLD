@@ -13,6 +13,12 @@ export const catalogItemIds = [
   "dress",
   "jacket",
   "sweater",
+  "shorts",
+  "leggings",
+  "skirt",
+  "kurta",
+  "saree",
+  "hoodie",
   "bedsheet",
   "pillowcover",
   "towel",
@@ -29,7 +35,13 @@ const catalogAliases: Record<CatalogItemId, readonly string[]> = {
   trousers: ["trousers", "trouser", "pants", "slacks", "formal pants"],
   dress: ["dress", "gown"],
   jacket: ["jacket", "blazer", "coat"],
-  sweater: ["sweater", "jumper", "cardigan", "pullover"],
+  sweater: ["sweater", "jumper", "cardigan", "pullover", "sweatshirt", "sweat shirt"],
+  shorts: ["shorts", "short"],
+  leggings: ["leggings", "legging"],
+  skirt: ["skirt", "skirts"],
+  kurta: ["kurta", "kurtas"],
+  saree: ["saree", "sari", "sarees", "saris"],
+  hoodie: ["hoodie", "hoodies"],
   bedsheet: ["bedsheet", "bed sheet"],
   pillowcover: ["pillow cover", "pillowcase", "pillow case"],
   towel: ["towel", "bath towel", "hand towel"],
@@ -60,34 +72,40 @@ const aliasIndex = new Map<string, CatalogItemId>(
  * This allow-list is deliberately narrow: material and garment terms are never
  * removed, and the remaining candidate must still exactly match a catalog alias.
  */
-const leadingNonSemanticModifiers = new Set([
-  "folded",
-  "black",
-  "white",
-  "blue",
-  "red",
-  "green",
-  "yellow",
-  "grey",
-  "gray",
-  "brown",
-  "beige",
-  "navy",
-  "maroon",
-  "pink",
-  "purple",
-  "orange",
-]);
+const leadingNonSemanticModifierPhrases = [
+  ["short", "sleeve"],
+  ["long", "sleeve"],
+  ["folded"],
+  ["formal"],
+  ["printed"],
+  ["patterned"],
+  ["black"],
+  ["white"],
+  ["blue"],
+  ["red"],
+  ["green"],
+  ["yellow"],
+  ["grey"],
+  ["gray"],
+  ["brown"],
+  ["beige"],
+  ["navy"],
+  ["maroon"],
+  ["pink"],
+  ["purple"],
+  ["orange"],
+] as const;
 
 const withoutLeadingNonSemanticModifiers = (normalizedLabel: string): string => {
   const tokens = normalizedLabel.split(" ");
   let firstGarmentToken = 0;
 
-  while (
-    firstGarmentToken < tokens.length &&
-    leadingNonSemanticModifiers.has(tokens[firstGarmentToken])
-  ) {
-    firstGarmentToken += 1;
+  while (firstGarmentToken < tokens.length) {
+    const nextModifier = leadingNonSemanticModifierPhrases.find((phrase) =>
+      phrase.every((token, index) => tokens[firstGarmentToken + index] === token)
+    );
+    if (!nextModifier) break;
+    firstGarmentToken += nextModifier.length;
   }
 
   return tokens.slice(firstGarmentToken).join(" ");
@@ -95,8 +113,9 @@ const withoutLeadingNonSemanticModifiers = (normalizedLabel: string): string => 
 
 /**
  * The only AI-layer function that assigns catalogItemId. It first uses an
- * exact normalized alias, then retries only after removing allow-listed leading
- * cosmetic/presentation modifiers. It never uses fuzzy or semantic matching.
+ * exact normalized alias, then retries only after repeatedly removing approved
+ * leading cosmetic/style descriptors. Materials and garment terms are never
+ * removed, and it never uses fuzzy or semantic matching.
  */
 export const mapDetectedGarment = (detection: DetectedGarment): MappedGarmentDetection => {
   const normalizedLabel = normalizeGarmentLabel(detection.detectedLabel);

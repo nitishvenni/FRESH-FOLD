@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BookingDraftSchema, GarmentModelOutputSchema } from "../../src/ai/contracts";
+import {
+  BookingDraftSchema,
+  FabricModelOutputSchema,
+  GarmentModelOutputSchema,
+} from "../../src/ai/contracts";
 
 describe("AI contracts", () => {
   it("accepts a complete garment result", () => {
@@ -57,6 +61,41 @@ describe("AI contracts", () => {
         status: "complete",
         detections: [{ detectedLabel: "Shirt", quantity: 0, confidence: 1.5 }],
         warnings: "not-an-array",
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts an advisory fabric result with multiple plausible candidates", () => {
+    expect(
+      FabricModelOutputSchema.safeParse({
+        status: "partial",
+        candidates: [
+          { fabric: "cotton", confidence: 0.62 },
+          { fabric: "rayon", confidence: 0.38 },
+        ],
+        careGuidance: {
+          washing: "Follow the garment care label.",
+          drying: "Air dry when the care label permits.",
+          ironing: null,
+          serviceRecommendation: null,
+        },
+        warnings: ["Visual identification is uncertain."],
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects fabric output with invalid guidance or confidence", () => {
+    expect(
+      FabricModelOutputSchema.safeParse({
+        status: "complete",
+        candidates: [{ fabric: "cotton", confidence: 1.1 }],
+        careGuidance: {
+          washing: "Wash normally.",
+          drying: "Dry normally.",
+          ironing: "Iron normally.",
+          serviceRecommendation: "steam",
+        },
+        warnings: [],
       }).success
     ).toBe(false);
   });

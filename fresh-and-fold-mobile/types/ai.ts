@@ -72,3 +72,36 @@ export type GarmentRecognitionResult = {
   requiresUserReview: true;
   detections: MappedGarmentDetection[];
 };
+
+export type FabricType =
+  | "cotton"
+  | "linen"
+  | "silk"
+  | "wool"
+  | "polyester"
+  | "denim"
+  | "rayon"
+  | "other"
+  | "unknown";
+
+export type FabricCandidate = {
+  fabric: FabricType;
+  confidence: number;
+};
+
+/** Guidance is advisory; garment care labels remain more authoritative. */
+export type FabricCareGuidance = {
+  washing: string | null;
+  drying: string | null;
+  ironing: string | null;
+  serviceRecommendation: "wash" | "dry" | "express" | null;
+};
+
+export type FabricIdentificationResult = {
+  status: AiAnalysisStatus;
+  candidates: FabricCandidate[];
+  careGuidance: FabricCareGuidance;
+  warnings: string[];
+  requestId: string;
+  requiresUserReview: true;
+};

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GarmentRecognitionResult } from "../types/ai";
-import { initialItems } from "./bookingData";
+import { initialItems, ItemKey } from "./bookingData";
 import {
   buildSmartScanBookingPrefill,
   createBookingReviewItems,
@@ -19,8 +19,8 @@ const result = (detections: GarmentRecognitionResult["detections"]): GarmentReco
   detections,
 });
 
-const mapped = (catalogItemId: "shirt" | "jeans", quantity: number | null) => ({
-  detectedLabel: catalogItemId === "shirt" ? "Shirt" : "Jeans",
+const mapped = (catalogItemId: ItemKey, quantity: number | null) => ({
+  detectedLabel: catalogItemId,
   normalizedLabel: catalogItemId,
   catalogItemId,
   mappingStatus: "mapped" as const,
@@ -41,7 +41,7 @@ describe("Smart Scan compact booking prefill", () => {
   });
 
   it.each([
-    ["unknown catalog key", { version: 1, source: "smart_scan", items: { saree: 1 } }],
+    ["unknown catalog key", { version: 1, source: "smart_scan", items: { suit: 1 } }],
     ["injected price", { version: 1, source: "smart_scan", items: { shirt: 1 }, price: 20 }],
     ["injected service", { version: 1, source: "smart_scan", items: { shirt: 1 }, service: "wash" }],
     ["injected provider", { version: 1, source: "smart_scan", items: { shirt: 1 }, provider: "gemini" }],
@@ -100,6 +100,37 @@ describe("Smart Scan compact booking prefill", () => {
       ...initialItems,
       tshirt: 2,
       trousers: 1,
+    });
+  });
+
+  it("includes every approved Phase C.1 category and the sweatshirt alias in the validated prefill", () => {
+    const review = createBookingReviewItems(
+      result([
+        { ...mapped("shorts", 1), detectedLabel: "Black Shorts" },
+        { ...mapped("leggings", 2), detectedLabel: "Blue Leggings" },
+        { ...mapped("skirt", 1), detectedLabel: "Printed Skirt" },
+        { ...mapped("kurta", 1), detectedLabel: "White Kurta" },
+        { ...mapped("saree", 1), detectedLabel: "Red Saree" },
+        { ...mapped("hoodie", 1), detectedLabel: "Black Hoodie" },
+        { ...mapped("sweater", 1), detectedLabel: "Grey Sweatshirt" },
+      ])
+    );
+
+    const prefill = buildSmartScanBookingPrefill(review).prefill;
+    expect(prefill).toEqual({
+      version: 1,
+      source: "smart_scan",
+      items: { shorts: 1, leggings: 2, skirt: 1, kurta: 1, saree: 1, hoodie: 1, sweater: 1 },
+    });
+    expect(hydrateSmartScanBookingPrefill(serializeSmartScanBookingPrefill(prefill!))).toEqual({
+      ...initialItems,
+      shorts: 1,
+      leggings: 2,
+      skirt: 1,
+      kurta: 1,
+      saree: 1,
+      hoodie: 1,
+      sweater: 1,
     });
   });
 
