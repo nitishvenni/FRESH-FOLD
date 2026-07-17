@@ -1,6 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "../hooks/useAppTheme";
-import Card from "./Card";
 
 type OrderCardProps = {
   order: {
@@ -13,16 +12,51 @@ type OrderCardProps = {
   onReorder?: () => void;
 };
 
-const getStatusColors = (status: string) => {
-  if (status === "Delivered") {
-    return { bg: "#DCFCE7", text: "#166534" };
+const getStatusConfig = (status: string, isDark: boolean) => {
+  const normalize = (status || "").toLowerCase();
+
+  // Completed
+  if (normalize === "delivered") {
+    return {
+      bg: isDark ? "rgba(34,197,94,0.15)" : "#DCFCE7",
+      text: isDark ? "#86EFAC" : "#166534",
+      isActive: false,
+    };
   }
 
-  if (status === "Out for Delivery") {
-    return { bg: "#DBEAFE", text: "#1D4ED8" };
+  // Cancelled (if exists)
+  if (normalize === "cancelled") {
+    return {
+      bg: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2",
+      text: isDark ? "#FCA5A5" : "#991B1B",
+      isActive: false,
+    };
   }
 
-  return { bg: "#FEF3C7", text: "#92400E" };
+  // Active - Scheduled
+  if (normalize === "scheduled") {
+    return {
+      bg: isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7",
+      text: isDark ? "#FCD34D" : "#92400E",
+      isActive: true,
+    };
+  }
+  
+  // Active - Ironing
+  if (normalize === "ironing") {
+    return {
+      bg: isDark ? "rgba(139,92,246,0.15)" : "#F3E8FF",
+      text: isDark ? "#C4B5FD" : "#6B21A8",
+      isActive: true,
+    };
+  }
+
+  // Active - Everything else (Washing, Picked Up, Out for Delivery, etc)
+  return {
+    bg: isDark ? "rgba(59,130,246,0.15)" : "#DBEAFE",
+    text: isDark ? "#93C5FD" : "#1D4ED8",
+    isActive: true,
+  };
 };
 
 export default function OrderCard({
@@ -31,104 +65,112 @@ export default function OrderCard({
   onReorder,
 }: OrderCardProps) {
   const { theme, isDark } = useAppTheme();
-  const statusColors = getStatusColors(order.status);
-  const reorderBackground = isDark ? "rgba(96, 165, 250, 0.14)" : "#EFF6FF";
+  const statusConfig = getStatusConfig(order.status, isDark);
+
+  // Active orders get a slight blue overlay
+  const cardBg = statusConfig.isActive
+    ? (isDark ? "rgba(37,99,235,0.08)" : "rgba(37,99,235,0.04)")
+    : (isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)");
+    
+  const cardBorder = statusConfig.isActive
+    ? (isDark ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.15)")
+    : (isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)");
+
+  const reorderBackground = isDark ? "rgba(148,163,184,0.15)" : "#F1F5F9";
 
   return (
-    <Card style={styles.card}>
+    <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
       <View style={styles.headerRow}>
-        <Text style={[styles.orderId, { color: theme.text }]}>Order #{order.id}</Text>
-        <Text style={[styles.price, { color: theme.primary }]}>Rs.{order.total}</Text>
+        <View>
+          <Text style={[styles.orderId, { color: theme.text }]}>Order #{order.id}</Text>
+          {order.dateLabel ? (
+            <Text style={[styles.date, { color: theme.textMuted }]}>
+              {order.dateLabel}
+            </Text>
+          ) : null}
+        </View>
+        <Text style={[styles.price, { color: theme.primary }]}>₹{order.total}</Text>
       </View>
 
-      <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
-        <Text style={[styles.badgeText, { color: statusColors.text }]}>{order.status}</Text>
+      <View style={[styles.badge, { backgroundColor: statusConfig.bg }]}>
+        <Text style={[styles.badgeText, { color: statusConfig.text }]}>{order.status}</Text>
       </View>
-
-      {order.dateLabel ? (
-        <Text style={[styles.date, { color: isDark ? "#E0F2FE" : theme.textMuted }]}>
-          {order.dateLabel}
-        </Text>
-      ) : null}
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity style={styles.trackButton} activeOpacity={0.9} onPress={onTrack}>
-          <Text style={styles.trackText}>Track Order</Text>
-        </TouchableOpacity>
+        {statusConfig.isActive ? (
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.primary }]} activeOpacity={0.9} onPress={onTrack}>
+            <Text style={[styles.actionText, { color: "#FFFFFF" }]}>Track Order</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: isDark ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.1)" }]} activeOpacity={0.9} onPress={onTrack}>
+            <Text style={[styles.actionText, { color: theme.primary }]}>View Details</Text>
+          </TouchableOpacity>
+        )}
 
         {onReorder ? (
           <TouchableOpacity
-            style={[styles.reorderButton, { backgroundColor: reorderBackground }]}
+            style={[styles.actionButton, { backgroundColor: reorderBackground }]}
             activeOpacity={0.9}
             onPress={onReorder}
           >
-            <Text style={[styles.reorderText, { color: theme.primary }]}>Reorder</Text>
+            <Text style={[styles.actionText, { color: theme.text }]}>Reorder</Text>
           </TouchableOpacity>
         ) : null}
       </View>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: 12,
-    padding: 16,
+    marginBottom: 16,
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+    alignItems: "flex-start",
+    marginBottom: 12,
   },
   orderId: {
-    fontWeight: "700",
+    fontWeight: "800",
     fontSize: 16,
+    marginBottom: 4,
   },
   price: {
-    fontWeight: "700",
-    fontSize: 16,
+    fontWeight: "800",
+    fontSize: 18,
+  },
+  date: {
+    fontSize: 13,
+    fontWeight: "500",
   },
   badge: {
     alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 10,
+    borderRadius: 8,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    marginBottom: 10,
+    marginBottom: 20,
   },
   badgeText: {
     fontSize: 12,
     fontWeight: "700",
   },
-  date: {
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 14,
-  },
   actionsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
   },
-  trackButton: {
+  actionButton: {
     flex: 1,
-    backgroundColor: "#2563EB",
-    height: 42,
-    borderRadius: 12,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  trackText: {
-    color: "#FFFFFF",
+  actionText: {
     fontWeight: "700",
-  },
-  reorderButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  reorderText: {
-    fontWeight: "700",
+    fontSize: 14,
   },
 });

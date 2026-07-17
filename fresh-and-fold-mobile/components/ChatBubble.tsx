@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import { radius, typography } from "../theme/theme";
 import { useAppTheme } from "../hooks/useAppTheme";
+import { MaterialIcons } from "@expo/vector-icons";
 
 type ChatBubbleProps = {
   message: {
@@ -15,54 +16,65 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
   const isUser = message.role === "user";
   const isAdmin = message.role === "admin";
 
+  const userBg = isDark ? "rgba(37,99,235,0.2)" : "rgba(37,99,235,0.12)";
+  const userBorder = isDark ? "rgba(37,99,235,0.3)" : "rgba(37,99,235,0.2)";
+  
+  const botBg = isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.7)";
+  const botBorder = isDark ? "rgba(148,163,184,0.15)" : "rgba(0,0,0,0.06)";
+
+  const adminBg = isDark ? "rgba(245,158,11,0.15)" : "rgba(254,243,199,0.7)";
+  const adminBorder = isDark ? "rgba(245,158,11,0.3)" : "rgba(245,158,11,0.2)";
+
+  let containerBg = botBg;
+  let containerBorder = botBorder;
+
+  if (isUser) {
+    containerBg = userBg;
+    containerBorder = userBorder;
+  } else if (isAdmin) {
+    containerBg = adminBg;
+    containerBorder = adminBorder;
+  }
+
   return (
     <View
       style={[
         styles.container,
-        isUser
-          ? [styles.user, { backgroundColor: theme.primary }]
-          : isAdmin
-            ? [
-                styles.admin,
-                {
-                  backgroundColor: isDark ? theme.surfaceAlt : theme.primarySoft,
-                  borderColor: theme.primary,
-                },
-              ]
-            : [
-                styles.bot,
-                {
-                  backgroundColor: theme.surface,
-                  borderColor: theme.border,
-                },
-              ],
+        isUser ? styles.user : styles.bot,
+        {
+          backgroundColor: containerBg,
+          borderColor: containerBorder,
+        },
       ]}
     >
       <Text
         style={[
           styles.text,
-          isUser
-            ? styles.userText
-            : {
-                color: theme.text,
-              },
+          { color: theme.text }, // Dark mode white, light mode navy/charcoal for great readability in both
         ]}
       >
         {message.text}
       </Text>
+      
       {message.time ? (
-        <Text
-          style={[
-            styles.time,
-            isUser
-              ? styles.userTime
-              : {
-                  color: theme.textMuted,
-                },
-          ]}
-        >
-          {message.time}
-        </Text>
+        <View style={styles.footerRow}>
+          <Text
+            style={[
+              styles.time,
+              { color: isUser ? (isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.4)") : theme.textMuted },
+            ]}
+          >
+            {message.time}
+          </Text>
+          {isUser && (
+             <MaterialIcons 
+               name="done-all" 
+               size={12} 
+               color={isDark ? "rgba(255,255,255,0.5)" : theme.primary} 
+               style={{ marginLeft: 4, marginTop: 4 }}
+             />
+          )}
+        </View>
       ) : null}
     </View>
   );
@@ -71,43 +83,33 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    minWidth: 60,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    minWidth: 80,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     marginBottom: 12,
-    borderRadius: radius.lg - 2,
+    borderRadius: radius.lg,
+    borderWidth: 1,
   },
   user: {
     borderBottomRightRadius: 4,
   },
   bot: {
-    backgroundColor: "#F3F4F6",
     borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  admin: {
-    backgroundColor: "#FFF3C4",
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#E5C95C",
   },
   text: {
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
     fontFamily: typography.body,
   },
-  userText: {
-    color: "#FFFFFF",
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
   time: {
     fontSize: 10,
     marginTop: 4,
     alignSelf: "flex-end",
     fontFamily: typography.medium,
-    opacity: 0.7,
-  },
-  userTime: {
-    color: "rgba(255,255,255,0.75)",
   },
 });

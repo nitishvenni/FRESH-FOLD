@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialIcons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -114,54 +115,75 @@ export default function SelectAddress() {
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={[styles.backgroundGlowTop, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.22 : 0.9 }]} />
-      <View style={[styles.backgroundGlowBottom, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.14 : 0.5 }]} />
+      {/* Subtle Atmospheric Background */}
+      <View
+        style={[
+          styles.backgroundGlowTop,
+          { backgroundColor: theme.primarySoft, opacity: isDark ? 0.15 : 0.6 },
+        ]}
+      />
 
-	      <ScrollView
-	        style={styles.container}
-	        contentContainerStyle={{
-	          paddingTop: insets.top + 24,
-	          paddingBottom: insets.bottom + 140,
-	        }}
-	        showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                void (async () => {
-                  try {
-                    setRefreshing(true);
-                    await fetchAddresses();
-                    showToast({
-                      type: "success",
-                      title: "Addresses refreshed",
-                    });
-                  } catch (error) {
-                    handleError(error);
-                  } finally {
-                    setRefreshing(false);
-                  }
-                })();
-              }}
-              tintColor={theme.primary}
-            />
-          }
-	      >
-        <Text style={[styles.header, { color: theme.text }]}>Select Address</Text>
+      {/* Header */}
+      <View
+        style={[
+          styles.headerRow,
+          { paddingTop: insets.top, paddingHorizontal: 20 },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
+          <MaterialIcons name="arrow-back" size={24} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Select Address</Text>
+        <View style={styles.backButtonPlaceholder} />
+      </View>
+
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 120, // Enough padding so CTA doesn't cover last item
+        }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void (async () => {
+                try {
+                  setRefreshing(true);
+                  await fetchAddresses();
+                  showToast({
+                    type: "success",
+                    title: "Addresses refreshed",
+                  });
+                } catch (error) {
+                  handleError(error);
+                } finally {
+                  setRefreshing(false);
+                }
+              })();
+            }}
+            tintColor={theme.primary}
+          />
+        }
+      >
         <Text style={[styles.subheader, { color: theme.textMuted }]}>
           Choose where you want the pickup team to collect and deliver your order.
         </Text>
 
-	        {addresses.length === 0 ? (
-	          <Card style={styles.emptyCard}>
-              <View style={styles.emptyAnimationWrap}>
-                <EmptyStateAnimation icon="location-on" />
-              </View>
-	            <Text style={[styles.emptyTitle, { color: theme.text }]}>No address found</Text>
-	            <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-	              Add a delivery address to continue with this order.
+        {addresses.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <View style={styles.emptyAnimationWrap}>
+              <EmptyStateAnimation icon="location-on" />
+            </View>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>No saved addresses yet</Text>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+              Add an address to schedule your pickup.
             </Text>
-          </Card>
+          </View>
         ) : (
           addresses.map((address) => (
             <AddressCard
@@ -184,8 +206,14 @@ export default function SelectAddress() {
         )}
 
         <TouchableOpacity
-          style={[styles.addButton, { borderColor: theme.primarySoft, backgroundColor: theme.primarySoft }]}
-          activeOpacity={0.9}
+          style={[
+            styles.addButton,
+            {
+              backgroundColor: isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)",
+              borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)",
+            },
+          ]}
+          activeOpacity={0.85}
           onPress={() => {
             void triggerImpactHaptic();
             router.push({
@@ -197,36 +225,57 @@ export default function SelectAddress() {
           <View style={styles.addIconWrap}>
             <MaterialIcons name="add-location-alt" size={20} color={theme.primary} />
           </View>
-          <Text style={[styles.addButtonText, { color: theme.primary }]}>Add New Address</Text>
+          <Text style={[styles.addButtonText, { color: theme.text }]}>Add New Address</Text>
+          <MaterialIcons name="chevron-right" size={20} color={theme.textMuted} style={{ marginLeft: "auto" }} />
         </TouchableOpacity>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
-        <TouchableOpacity
-          style={[styles.continueButton, { backgroundColor: theme.primary }, !selected && styles.continueButtonDisabled]}
-          disabled={!selected}
-          activeOpacity={0.9}
-          onPress={async () => {
-            if (selected) {
-              await AsyncStorage.setItem(SELECTED_ADDRESS_ID_KEY, selected);
-            }
-            void triggerImpactHaptic();
-            router.push({
-              pathname: "/order-summary",
-              params: {
-                service,
-                items,
-                date,
-                slot,
-                addressId: selectedAddress?._id,
-                addressName: selectedAddress?.fullName,
-              },
-            });
-          }}
+      {/* Floating Bottom Summary */}
+      <View style={[styles.bottomBarWrap, { paddingBottom: insets.bottom || 20 }]}>
+        <BlurView
+          intensity={isDark ? 26 : 40}
+          tint={isDark ? "dark" : "light"}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={[
+            styles.bottomBarBorder,
+            {
+              backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.4)",
+              borderTopColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.7)",
+            },
+          ]}
         >
-          <Text style={styles.continueText}>Continue</Text>
-          <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.continueBtn,
+              { backgroundColor: theme.primary },
+              !selected && styles.continueButtonDisabled,
+            ]}
+            disabled={!selected}
+            activeOpacity={0.9}
+            onPress={async () => {
+              if (selected) {
+                await AsyncStorage.setItem(SELECTED_ADDRESS_ID_KEY, selected);
+              }
+              void triggerImpactHaptic();
+              router.push({
+                pathname: "/order-summary",
+                params: {
+                  service,
+                  items,
+                  date,
+                  slot,
+                  addressId: selectedAddress?._id,
+                  addressName: selectedAddress?.fullName,
+                },
+              });
+            }}
+          >
+            <Text style={styles.continueText}>Continue</Text>
+            <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -236,42 +285,51 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
-  backgroundGlowTop: {
-    position: "absolute",
-    top: -90,
-    right: -36,
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-  },
-  backgroundGlowBottom: {
-    position: "absolute",
-    bottom: 110,
-    left: -70,
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-  },
   container: {
     flex: 1,
     paddingHorizontal: 20,
   },
-  header: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 8,
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -100,
+    right: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 56,
+    marginBottom: 12,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  backButtonPlaceholder: {
+    width: 40,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "600",
   },
   subheader: {
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: 24,
+    fontSize: 13,
+    marginBottom: 20,
+    lineHeight: 18,
   },
-  emptyCard: {
-    marginBottom: 16,
+  emptyWrap: {
+    marginBottom: 24,
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
   },
   emptyAnimationWrap: {
-    marginBottom: 4,
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 18,
@@ -283,36 +341,48 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   addButton: {
-    marginTop: 4,
-    height: 58,
-    borderRadius: 18,
-    borderWidth: 0,
+    marginTop: 8,
+    height: 60,
+    borderRadius: 20,
+    borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
   addIconWrap: {
-    marginRight: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(59,130,246,0.1)", // Very subtle tint just for the icon
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   addButtonText: {
     fontSize: 15,
     fontWeight: "700",
   },
-  footer: {
+  bottomBarWrap: {
     position: "absolute",
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    overflow: "hidden",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
-  continueButton: {
-    height: 56,
-    borderRadius: 18,
+  bottomBarBorder: {
+    borderTopWidth: 1,
+    paddingTop: 16,
+    paddingHorizontal: 20,
+  },
+  continueBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    height: 52,
+    borderRadius: 26,
     gap: 8,
   },
   continueButtonDisabled: {

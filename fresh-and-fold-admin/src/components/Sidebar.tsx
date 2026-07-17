@@ -62,7 +62,7 @@ export default function Sidebar({
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, color: "#fbbf24", letterSpacing: "0.12em", textTransform: "uppercase", fontSize: 12 }}>
+          <p style={{ margin: 0, color: "var(--accent)", letterSpacing: "0.12em", textTransform: "uppercase", fontSize: 12 }}>
             Fresh & Fold
           </p>
           <h2 style={{ margin: "10px 0 0 0", fontSize: collapsed ? 20 : 30, lineHeight: 1.05 }}>
@@ -95,9 +95,9 @@ export default function Sidebar({
             end={item.to === "/"}
             style={({ isActive }) => ({
               ...sidebarItemBase,
-              background: isActive ? "linear-gradient(90deg, rgba(242,169,73,0.2), rgba(242,169,73,0.08))" : "transparent",
+              background: isActive ? "linear-gradient(90deg, rgba(37,99,235,0.2), rgba(37,99,235,0.08))" : "transparent",
               color: isActive ? "#fff" : "#d4d4d4",
-              border: isActive ? "1px solid rgba(242,169,73,0.24)" : "1px solid transparent",
+              border: isActive ? "1px solid rgba(37,99,235,0.24)" : "1px solid transparent",
               padding: collapsed ? "12px 10px" : "12px 14px",
               transition: "background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease",
             })}

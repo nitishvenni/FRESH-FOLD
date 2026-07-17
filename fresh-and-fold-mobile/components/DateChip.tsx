@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "../hooks/useAppTheme";
 
 type DateChipProps = {
@@ -16,7 +16,7 @@ export default function DateChip({
   selected,
   onPress,
 }: DateChipProps) {
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
 
   return (
     <TouchableOpacity
@@ -25,15 +25,25 @@ export default function DateChip({
       style={[
         styles.chip,
         {
-          backgroundColor: selected ? theme.primary : theme.surface,
-          borderColor: selected ? theme.primary : theme.border,
+          backgroundColor: selected
+            ? theme.primary
+            : isDark
+            ? "rgba(17,24,39,0.4)"
+            : "rgba(255,255,255,0.7)",
+          borderColor: selected
+            ? theme.primary
+            : isDark
+            ? "rgba(148,163,184,0.15)"
+            : "rgba(255,255,255,0.9)",
+          shadowColor: selected ? theme.primary : "#000",
+          shadowOpacity: selected ? (isDark ? 0.3 : 0.2) : 0.02,
         },
       ]}
     >
       <Text style={[styles.month, { color: selected ? "rgba(255,255,255,0.78)" : theme.textMuted }]}>
         {month}
       </Text>
-      <Text style={[styles.date, { color: selected ? theme.surface : theme.text }]}>{date}</Text>
+      <Text style={[styles.date, { color: selected ? "#FFFFFF" : theme.text }]}>{date}</Text>
       <Text style={[styles.day, { color: selected ? "rgba(255,255,255,0.86)" : theme.textMuted }]}>
         {day}
       </Text>
@@ -51,6 +61,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 0,
   },
   month: {
     fontSize: 11,

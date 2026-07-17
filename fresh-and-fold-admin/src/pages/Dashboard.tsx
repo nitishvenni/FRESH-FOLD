@@ -1,6 +1,7 @@
 import { glassCard, mutedTextStyle } from "../admin/styles";
 import { useAdminData } from "../admin/AdminContext";
 import DashboardCards from "../components/DashboardCards";
+import { useNavigate } from "react-router-dom";
 import LiveActivityFeed from "../components/LiveActivityFeed";
 import RevenueChart from "../components/RevenueChart";
 import Skeleton from "../components/Skeleton";
@@ -20,14 +21,15 @@ export default function DashboardPage() {
     loadingOrders,
     loadingAnalytics,
   } = useAdminData();
+  const navigate = useNavigate();
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: 18,
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          gap: 24,
         }}
       >
         <div style={{ display: "grid", gap: 18 }}>
@@ -38,7 +40,7 @@ export default function DashboardPage() {
               display: "grid",
               gap: 14,
               background:
-                "radial-gradient(circle at top right, rgba(242,169,73,0.16), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+                "radial-gradient(circle at top right, rgba(37,99,235,0.16), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
             }}
           >
             <div>
@@ -51,11 +53,19 @@ export default function DashboardPage() {
               </p>
             </div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)" }}>
-                {activeOrders} orders in progress
+              <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(37,99,235,0.15)", color: "#bfdbfe", fontWeight: 600 }}>
+                {activeOrders} active orders
               </div>
-              <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(242,169,73,0.1)", color: "#ffe1a8" }}>
-                {newTicketAlerts} new ticket alerts
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  background: newTicketAlerts > 0 ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.05)",
+                  color: newTicketAlerts > 0 ? "#fecaca" : "var(--text-secondary)",
+                  fontWeight: 600,
+                }}
+              >
+                {newTicketAlerts} new alerts
               </div>
             </div>
           </div>
@@ -83,7 +93,10 @@ export default function DashboardPage() {
                   gap: 16,
                 }}
               >
-                <div style={{ ...glassCard, padding: 18 }}>
+                <div 
+                  onClick={() => navigate("/support")}
+                  style={{ ...glassCard, padding: 18, cursor: "pointer" }}
+                >
                   <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                     Open Tickets
                   </p>
@@ -92,7 +105,10 @@ export default function DashboardPage() {
                     Customer issues that still need admin action
                   </p>
                 </div>
-                <div style={{ ...glassCard, padding: 18 }}>
+                <div 
+                  onClick={() => navigate("/support")}
+                  style={{ ...glassCard, padding: 18, cursor: "pointer" }}
+                >
                   <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                     New Alerts
                   </p>
@@ -128,23 +144,43 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
-              <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,0.04)" }}>
-                <p style={{ ...mutedTextStyle, margin: 0 }}>AI Resolution Rate</p>
-                <p style={{ fontSize: 34, fontWeight: 800, margin: "8px 0 0" }}>{analytics?.aiResolvedRate ?? 0}%</p>
+              <div style={{ padding: 16, borderRadius: 16, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                <p style={{ ...mutedTextStyle, margin: 0, fontWeight: 600 }}>AI Resolution Rate</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+                  <span style={{ fontSize: 28, fontWeight: 800, minWidth: 64 }}>{analytics?.aiResolvedRate ?? 0}%</span>
+                  <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.min(100, Math.max(0, analytics?.aiResolvedRate ?? 0))}%`, height: "100%", background: "#2563EB", borderRadius: 999 }} />
+                  </div>
+                </div>
               </div>
-              <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,0.04)" }}>
-                <p style={{ ...mutedTextStyle, margin: 0 }}>Escalation Rate</p>
-                <p style={{ fontSize: 34, fontWeight: 800, margin: "8px 0 0" }}>{analytics?.escalationRate ?? 0}%</p>
+              
+              <div style={{ padding: 16, borderRadius: 16, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                <p style={{ ...mutedTextStyle, margin: 0, fontWeight: 600 }}>Escalation Rate</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+                  <span style={{ fontSize: 28, fontWeight: 800, minWidth: 64 }}>{analytics?.escalationRate ?? 0}%</span>
+                  <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.min(100, Math.max(0, analytics?.escalationRate ?? 0))}%`, height: "100%", background: "#F59E0B", borderRadius: 999 }} />
+                  </div>
+                </div>
               </div>
-              <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,0.04)" }}>
-                <p style={{ ...mutedTextStyle, margin: 0 }}>Avg Response</p>
-                <p style={{ fontSize: 34, fontWeight: 800, margin: "8px 0 0" }}>
-                  {analytics?.avgResponseTimeMinutes ?? "-"} min
+              
+              <div style={{ padding: 16, borderRadius: 16, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                <p style={{ ...mutedTextStyle, margin: 0, fontWeight: 600 }}>Avg Response</p>
+                <p style={{ fontSize: 28, fontWeight: 800, margin: "8px 0 0" }}>
+                  {analytics?.avgResponseTimeMinutes ?? "-"} <span style={{ fontSize: 16, color: "var(--text-muted)", fontWeight: 600 }}>min</span>
                 </p>
               </div>
-              <div style={{ padding: 14, borderRadius: 16, background: overdueTicketsCount ? "rgba(239,68,68,0.14)" : "rgba(255,255,255,0.04)" }}>
-                <p style={{ ...mutedTextStyle, margin: 0 }}>Overdue Tickets</p>
-                <p style={{ fontSize: 34, fontWeight: 800, margin: "8px 0 0" }}>{overdueTicketsCount}</p>
+              
+              <div style={{ 
+                padding: 16, 
+                borderRadius: 16, 
+                background: overdueTicketsCount > 0 ? "rgba(220,38,38,0.12)" : "rgba(255,255,255,0.02)",
+                border: overdueTicketsCount > 0 ? "1px solid rgba(220,38,38,0.2)" : "1px solid rgba(255,255,255,0.04)",
+              }}>
+                <p style={{ ...mutedTextStyle, margin: 0, fontWeight: 600, color: overdueTicketsCount > 0 ? "#fca5a5" : "var(--text-muted)" }}>Overdue Tickets</p>
+                <p style={{ fontSize: 28, fontWeight: 800, margin: "8px 0 0", color: overdueTicketsCount > 0 ? "#ef4444" : "inherit" }}>
+                  {overdueTicketsCount}
+                </p>
               </div>
             </div>
           )}

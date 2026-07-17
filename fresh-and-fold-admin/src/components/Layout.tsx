@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import CursorGlow from "./CursorGlow";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 
@@ -58,46 +57,10 @@ export default function Layout({ children, error }: { children: ReactNode; error
         minHeight: "100vh",
         display: "flex",
         color: "var(--text-primary)",
-        background: "linear-gradient(135deg, #05070c, #0b1220, #172554, #07111f)",
-        backgroundSize: "400% 400%",
-        animation: "gradientMove 15s ease infinite",
+        backgroundColor: "var(--background, #05070c)",
         position: "relative",
-        overflow: "hidden",
       }}
     >
-      <CursorGlow />
-      <div
-        style={{
-          position: "fixed",
-          width: 420,
-          height: 420,
-          top: -120,
-          right: -140,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(250,204,21,0.4), transparent 70%)",
-          filter: "blur(120px)",
-          opacity: 0.48,
-          pointerEvents: "none",
-          animation: "floatBlobOne 18s ease-in-out infinite",
-          willChange: "transform",
-        }}
-      />
-      <div
-        style={{
-          position: "fixed",
-          width: 360,
-          height: 360,
-          bottom: -120,
-          left: -80,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(59,130,246,0.32), transparent 70%)",
-          filter: "blur(120px)",
-          opacity: 0.34,
-          pointerEvents: "none",
-          animation: "floatBlobTwo 22s ease-in-out infinite",
-          willChange: "transform",
-        }}
-      />
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
 
       <div
@@ -117,12 +80,11 @@ export default function Layout({ children, error }: { children: ReactNode; error
         <main
           style={{
             minWidth: 0,
-            borderRadius: 28,
+            borderRadius: 24,
             padding: 24,
-            background: "linear-gradient(180deg, rgba(9,14,25,0.88), rgba(5,7,12,0.76))",
-            border: "1px solid rgba(255,255,255,0.06)",
-            boxShadow: "0 24px 80px rgba(0,0,0,0.32)",
-            backdropFilter: "blur(18px)",
+            background: "transparent",
+            position: "relative",
+            zIndex: 1,
           }}
         >
           {error ? (

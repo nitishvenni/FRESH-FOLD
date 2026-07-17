@@ -1,10 +1,17 @@
 import { NextFunction, Response } from "express";
 import { AuthRequest } from "./authMiddleware";
 
-type RateLimitOptions = {
+export type RateLimitOptions = {
   windowMs: number;
   max: number;
   namespace: string;
+  /** Defaults to the existing composite user/IP behavior for all current routes. */
+  keyStrategy?: "user-ip" | "user";
+  error?: {
+    code: string;
+    message: string;
+    retryable?: boolean;
+  };
 };
 
 type Bucket = {
@@ -27,7 +34,10 @@ export const createRateLimit = (options: RateLimitOptions) => {
     const now = Date.now();
     const userId = String(req.user?.userId || "anonymous");
     const ip = getClientIp(req);
-    const key = `${options.namespace}:${userId}:${ip}`;
+    const key =
+      options.keyStrategy === "user"
+        ? `${options.namespace}:${userId}`
+        : `${options.namespace}:${userId}:${ip}`;
 
     const existing = buckets.get(key);
     if (!existing || now > existing.resetAt) {
@@ -41,6 +51,18 @@ export const createRateLimit = (options: RateLimitOptions) => {
     if (existing.count >= options.max) {
       const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
       res.setHeader("Retry-After", retryAfterSeconds.toString());
+
+      if (options.error) {
+        const requestId = res.locals.aiRequestId;
+        return res.status(429).json({
+          code: options.error.code,
+          message: options.error.message,
+          retryable: options.error.retryable ?? true,
+          ...(typeof requestId === "string" ? { requestId } : {}),
+          retryAfterSeconds,
+        });
+      }
+
       return res.status(429).json({
         success: false,
         message: "Too many support requests. Please try again shortly.",

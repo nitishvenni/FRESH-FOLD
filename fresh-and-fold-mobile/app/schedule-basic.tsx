@@ -1,9 +1,9 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Card from "../components/Card";
 import DateChip from "../components/DateChip";
 import TimeSlotCard from "../components/TimeSlotCard";
 import { useAppTheme } from "../hooks/useAppTheme";
@@ -39,105 +39,175 @@ export default function ScheduleBasic() {
   const { service, items } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
-  const [selectedDate, setSelectedDate] = useState<string | null>(dates[0]?.value ?? null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+
+  const canContinue = !!selectedDate && !!selectedSlot;
+
+  const handleContinue = () => {
+    if (!canContinue) return;
+    void triggerImpactHaptic();
+    router.push({
+      pathname: "/select-address",
+      params: {
+        service,
+        items,
+        date: selectedDate,
+        slot: selectedSlot,
+      },
+    });
+  };
+
+  // Dynamic Summary Text
+  let summaryTitle = "Choose a date and time";
+  let summarySubtitle = "Select your preferred pickup window. You'll choose the pickup address in the next step.";
+  if (selectedDate && !selectedSlot) {
+    summaryTitle = selectedDate;
+    summarySubtitle = "Now choose your preferred time slot.";
+  } else if (selectedDate && selectedSlot) {
+    summaryTitle = `${selectedDate} · ${selectedSlot}`;
+    summarySubtitle = "You'll choose the pickup address in the next step.";
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={[styles.backgroundGlowTop, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.22 : 0.9 }]} />
-      <View style={[styles.backgroundGlowBottom, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.14 : 0.5 }]} />
+      {/* Subtle Atmospheric Background */}
+      <View
+        style={[
+          styles.backgroundGlowTop,
+          { backgroundColor: theme.primarySoft, opacity: isDark ? 0.15 : 0.6 },
+        ]}
+      />
+
+      {/* Header */}
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top, paddingHorizontal: 20 },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
+          <MaterialIcons name="arrow-back" size={24} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Schedule Pickup</Text>
+        <View style={styles.backButtonPlaceholder} />
+      </View>
 
       <ScrollView
         style={styles.container}
         contentContainerStyle={{
-          paddingTop: insets.top + 24,
-          paddingBottom: insets.bottom + 140,
+          paddingBottom: insets.bottom + 120, // Enough padding so CTA doesn't cover last slot
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.header, { color: theme.text }]}>Schedule Pickup</Text>
-        <Text style={[styles.subheader, { color: theme.textMuted }]}>
-          Choose a pickup date and time slot that works best for your order.
-        </Text>
+        <View style={styles.section}>
+          <Text style={[styles.subheader, { color: theme.textMuted }]}>
+            Choose a convenient pickup date and time.
+          </Text>
 
-        <Card style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <View style={[styles.summaryIconWrap, { backgroundColor: theme.primarySoft }]}>
+          {/* Dynamic Summary Card */}
+          <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)",
+                borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)",
+              },
+            ]}
+          >
+            <View style={styles.summaryIconWrap}>
+              <View style={[styles.summaryIconBg, { backgroundColor: theme.primarySoft }]} />
               <MaterialIcons name="schedule" size={18} color={theme.primary} />
             </View>
-            <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>Pickup Summary</Text>
+            <View style={styles.summaryTextWrap}>
+              <Text style={[styles.summaryTitle, { color: theme.text }]}>{summaryTitle}</Text>
+              <Text style={[styles.summarySubtitle, { color: theme.textMuted }]}>
+                {summarySubtitle}
+              </Text>
+            </View>
           </View>
-          <Text style={[styles.summaryValue, { color: theme.text }]}>
-            {selectedDate && selectedSlot
-              ? `${selectedDate} - ${selectedSlot}`
-              : "Choose a date and slot to continue"}
-          </Text>
-          <Text style={[styles.summaryHelper, { color: theme.textMuted }]}>
-            Your garments will be collected from the selected address in this time window.
-          </Text>
-        </Card>
+        </View>
 
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Date</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dateRow}
-        >
-          {dates.map((date) => (
-            <DateChip
-              key={date.value}
-              month={date.month}
-              date={date.date}
-              day={date.day}
-              selected={selectedDate === date.value}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Date</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dateRow}
+          >
+            {dates.map((date) => (
+              <DateChip
+                key={date.value}
+                month={date.month}
+                date={date.date}
+                day={date.day}
+                selected={selectedDate === date.value}
+                onPress={() => {
+                  void triggerSelectionHaptic();
+                  setSelectedDate(date.value);
+                  // Optionally reset slot when date changes if required by business logic, 
+                  // but existing logic doesn't strictly enforce it, we just keep it smooth.
+                }}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={[styles.section, styles.timeSlotSection]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Time Slot</Text>
+          {slots.map((slot) => (
+            <TimeSlotCard
+              key={slot.value}
+              slot={slot.value}
+              description={slot.description}
+              selected={selectedSlot === slot.value}
               onPress={() => {
                 void triggerSelectionHaptic();
-                setSelectedDate(date.value);
+                setSelectedSlot(slot.value);
+                // If date isn't selected, auto-select the first available date for convenience
+                if (!selectedDate) {
+                  setSelectedDate(dates[0].value);
+                }
               }}
             />
           ))}
-        </ScrollView>
-
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Time Slot</Text>
-        {slots.map((slot) => (
-          <TimeSlotCard
-            key={slot.value}
-            slot={slot.value}
-            description={slot.description}
-            selected={selectedSlot === slot.value}
-            onPress={() => {
-              void triggerSelectionHaptic();
-              setSelectedSlot(slot.value);
-            }}
-          />
-        ))}
+        </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
-        <TouchableOpacity
+      {/* Floating Bottom Summary */}
+      <View style={[styles.bottomBarWrap, { paddingBottom: insets.bottom || 20 }]}>
+        <BlurView
+          intensity={isDark ? 26 : 40}
+          tint={isDark ? "dark" : "light"}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
           style={[
-            styles.continueButton,
-            { backgroundColor: theme.primary },
-            (!selectedDate || !selectedSlot) && styles.continueButtonDisabled,
+            styles.bottomBarBorder,
+            {
+              backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.4)",
+              borderTopColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.7)",
+            },
           ]}
-          disabled={!selectedDate || !selectedSlot}
-          activeOpacity={0.9}
-          onPress={() => {
-            void triggerImpactHaptic();
-            router.push({
-              pathname: "/select-address",
-              params: {
-                service,
-                items,
-                date: selectedDate,
-                slot: selectedSlot,
-              },
-            });
-          }}
         >
-          <Text style={styles.continueText}>Continue</Text>
-          <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleContinue}
+            disabled={!canContinue}
+            style={[
+              styles.continueBtn,
+              { backgroundColor: theme.primary },
+              !canContinue && { opacity: 0.4 },
+            ]}
+          >
+            <Text style={styles.continueText}>Continue</Text>
+            <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -147,92 +217,112 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
-  backgroundGlowTop: {
-    position: "absolute",
-    top: -90,
-    right: -36,
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-  },
-  backgroundGlowBottom: {
-    position: "absolute",
-    bottom: 110,
-    left: -70,
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-  },
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+  },
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -100,
+    right: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
   },
   header: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 56,
+    marginBottom: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  backButtonPlaceholder: {
+    width: 40,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "600",
   },
   subheader: {
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: 24,
+    fontSize: 13,
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  timeSlotSection: {
+    marginBottom: 0,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 14,
-  },
-  dateRow: {
-    paddingBottom: 8,
-    marginBottom: 22,
+    marginBottom: 16,
   },
   summaryCard: {
-    marginBottom: 22,
-  },
-  summaryHeader: {
     flexDirection: "row",
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
     alignItems: "center",
-    marginBottom: 14,
   },
   summaryIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginRight: 16,
+    position: "relative",
   },
-  summaryLabel: {
-    fontSize: 14,
-    fontWeight: "600",
+  summaryIconBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    opacity: 0.4, // Keep the soft tint extremely subtle
   },
-  summaryValue: {
-    fontSize: 22,
+  summaryTextWrap: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  summaryTitle: {
+    fontSize: 15,
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  summaryHelper: {
-    fontSize: 14,
-    lineHeight: 20,
+  summarySubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
   },
-  footer: {
+  dateRow: {
+    paddingRight: 20, // allows last item to scroll cleanly
+  },
+  bottomBarWrap: {
     position: "absolute",
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    overflow: "hidden",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
-  continueButton: {
-    height: 56,
-    borderRadius: 18,
+  bottomBarBorder: {
+    borderTopWidth: 1,
+    paddingTop: 16,
+    paddingHorizontal: 20,
+  },
+  continueBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    height: 52,
+    borderRadius: 26,
     gap: 8,
-  },
-  continueButtonDisabled: {
-    opacity: 0.45,
   },
   continueText: {
     color: "#FFFFFF",

@@ -1,7 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "../hooks/useAppTheme";
-import Card from "./Card";
 
 type Address = {
   _id: string;
@@ -25,25 +24,47 @@ export default function AddressCard({
   onPress,
   onEdit,
 }: AddressCardProps) {
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
   const addressType = address.addressType || "Address";
 
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
-      <Card
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+      <View
         style={[
           styles.card,
-          selected && {
-            borderWidth: 2,
-            borderColor: theme.primary,
-            shadowColor: theme.primary,
-            shadowOpacity: 0.1,
+          {
+            backgroundColor: selected
+              ? isDark
+                ? "rgba(30,58,138,0.25)"
+                : "rgba(219,234,254,0.4)"
+              : isDark
+              ? "rgba(17,24,39,0.4)"
+              : "rgba(255,255,255,0.7)",
+            borderColor: selected
+              ? isDark
+                ? "rgba(96,165,250,0.4)"
+                : "rgba(59,130,246,0.35)"
+              : isDark
+              ? "rgba(148,163,184,0.15)"
+              : "rgba(255,255,255,0.9)",
+            borderWidth: 1,
+            shadowColor: selected ? theme.primary : "#000",
+            shadowOpacity: selected ? (isDark ? 0.3 : 0.1) : 0.02,
           },
         ]}
       >
         <View style={styles.row}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="location-on" size={22} color={theme.primary} />
+          <View
+            style={[
+              styles.iconWrap,
+              { backgroundColor: selected ? theme.primarySoft : "transparent" },
+            ]}
+          >
+            <MaterialIcons
+              name="location-on"
+              size={22}
+              color={selected ? theme.primary : theme.textMuted}
+            />
           </View>
 
           <View style={styles.copy}>
@@ -65,29 +86,35 @@ export default function AddressCard({
             {onEdit ? (
               <TouchableOpacity
                 activeOpacity={0.85}
-                style={[styles.editButton, { backgroundColor: theme.primarySoft }]}
+                style={[
+                  styles.editButton,
+                  { backgroundColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(241,245,249,0.8)" },
+                ]}
                 onPress={(event) => {
                   event.stopPropagation();
                   onEdit();
                 }}
               >
-                <MaterialIcons name="edit" size={17} color={theme.primary} />
+                <MaterialIcons name="edit" size={16} color={theme.textMuted} />
               </TouchableOpacity>
             ) : null}
-            <View
-              style={[
-                styles.indicator,
-                {
-                  borderColor: selected ? theme.primary : theme.border,
-                  backgroundColor: selected ? theme.primary : theme.background,
-                },
-              ]}
-            >
-              {selected ? <MaterialIcons name="check" size={16} color={theme.surface} /> : null}
+            <View style={styles.rightCheck}>
+              {selected ? (
+                <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
+                  <MaterialIcons name="check" size={12} color="#FFFFFF" />
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.emptyCircle,
+                    { borderColor: isDark ? "rgba(148,163,184,0.3)" : "rgba(203,213,225,0.8)" },
+                  ]}
+                />
+              )}
             </View>
           </View>
         </View>
-      </Card>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -96,6 +123,10 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 12,
     padding: 16,
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 0,
   },
   row: {
     flexDirection: "row",
@@ -135,25 +166,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  indicator: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
     marginLeft: 12,
   },
   editButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+  },
+  rightCheck: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
   },
 });

@@ -5,8 +5,7 @@ export const pageStyle: CSSProperties = {
   minHeight: "100vh",
   display: "flex",
   color: "#fff",
-  background:
-    "radial-gradient(1200px circle at 15% 10%, rgba(245,158,11,0.16), transparent 28%), radial-gradient(1000px circle at 80% 0%, rgba(59,130,246,0.12), transparent 32%), #080808",
+  background: "#030712",
 };
 
 export const shellContentStyle: CSSProperties = {
@@ -15,12 +14,12 @@ export const shellContentStyle: CSSProperties = {
 };
 
 export const glassCard: CSSProperties = {
-  background: "rgba(255,255,255,0.05)",
-  backdropFilter: "blur(16px)",
-  borderRadius: 22,
+  background: "rgba(17, 24, 39, 0.6)",
+  backdropFilter: "blur(8px)",
+  borderRadius: 16,
   padding: 20,
   border: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 22px 60px rgba(0,0,0,0.28)",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
 };
 
 export const sectionTitleStyle: CSSProperties = {
@@ -55,14 +54,14 @@ export const selectStyle: CSSProperties = {
 };
 
 export const buttonStyle: CSSProperties = {
-  background: "linear-gradient(135deg, #f2a949, #ffce74)",
-  color: "#111",
+  background: "var(--accent)",
+  color: "#fff",
   padding: "10px 18px",
   borderRadius: 12,
   border: "none",
   cursor: "pointer",
-  fontWeight: 700,
-  boxShadow: "0 10px 28px rgba(242,169,73,0.28)",
+  fontWeight: 600,
+  boxShadow: "0 4px 14px rgba(37,99,235,0.24)",
 };
 
 export const smallButtonStyle: CSSProperties = {
@@ -71,9 +70,9 @@ export const smallButtonStyle: CSSProperties = {
 };
 
 export const miniCardStyle: CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 16,
+  background: "rgba(30, 41, 59, 0.4)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 12,
   padding: 14,
 };
 
@@ -90,16 +89,17 @@ export const tableStyle: CSSProperties = {
 export const thStyle: CSSProperties = {
   textAlign: "left",
   padding: 12,
-  borderBottom: "1px solid #262626",
-  color: "#e5e7eb",
-  fontSize: 13,
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  color: "var(--text-muted)",
+  fontSize: 12,
   letterSpacing: "0.04em",
   textTransform: "uppercase",
+  fontWeight: 600,
 };
 
 export const tdStyle: CSSProperties = {
   padding: 12,
-  borderBottom: "1px solid #161616",
+  borderBottom: "1px solid rgba(255,255,255,0.04)",
   verticalAlign: "top",
 };
 
@@ -120,33 +120,35 @@ export const mutedTextStyle: CSSProperties = {
 export function getOrderStatusStyle(status: string): CSSProperties {
   switch (status) {
     case "Scheduled":
-      return { backgroundColor: "#374151", color: "#fff" };
+      return { backgroundColor: "#334155", color: "#fff" };
     case "Received at Facility":
-      return { backgroundColor: "#1d4ed8", color: "#fff" };
+      return { backgroundColor: "#1e3a8a", color: "#fff" };
     case "Picked Up":
-      return { backgroundColor: "#0ea5e9", color: "#04111d" };
+      return { backgroundColor: "#0284c7", color: "#fff" };
     case "Washing":
       return { backgroundColor: "#2563eb", color: "#fff" };
     case "Ironing":
       return { backgroundColor: "#7c3aed", color: "#fff" };
     case "Out for Delivery":
-      return { backgroundColor: "#f97316", color: "#111" };
+      return { backgroundColor: "#f59e0b", color: "#fff" };
     case "Delivered":
       return { backgroundColor: "#16a34a", color: "#fff" };
+    case "Cancelled":
+      return { backgroundColor: "#dc2626", color: "#fff" };
     default:
-      return { backgroundColor: "#222", color: "#fff" };
+      return { backgroundColor: "#1e293b", color: "#fff" };
   }
 }
 
 export function getTicketStatusStyle(status: SupportTicket["status"]): CSSProperties {
   switch (status) {
     case "Open":
-      return { backgroundColor: "#ef4444", color: "#fff" };
+      return { backgroundColor: "#dc2626", color: "#fff" };
     case "In Progress":
-      return { backgroundColor: "#f59e0b", color: "#111827" };
+      return { backgroundColor: "#d97706", color: "#fff" };
     case "Resolved":
       return { backgroundColor: "#16a34a", color: "#fff" };
     default:
-      return { backgroundColor: "#222", color: "#fff" };
+      return { backgroundColor: "#1e293b", color: "#fff" };
   }
 }

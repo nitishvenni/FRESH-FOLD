@@ -33,17 +33,45 @@ export default function LiveChat({
         alignItems: "start",
       }}
     >
-      <div style={{ ...glassCard, minHeight: 460 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ marginTop: 0, marginBottom: 0 }}>Live Conversation</h3>
-          {selectedTicket ? (
-            <span style={{ ...statusBadgeBase, ...getTicketStatusStyle(selectedTicket.status) }}>
-              {selectedTicket.status}
-            </span>
-          ) : null}
-        </div>
+      <div style={{ ...glassCard, minHeight: 460, display: "flex", flexDirection: "column" }}>
+        {selectedTicket ? (
+          <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>#{selectedTicket.id.slice(-6)}</span>
+                  <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>{selectedTicket.mobile}</span>
+                </h3>
+                <div style={{ ...mutedTextStyle, fontSize: 13, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span>{selectedTicket.reason}</span>
+                  {selectedTicket.orderId && <span>Order #{String(selectedTicket.orderId).slice(-6)}</span>}
+                  <span>{selectedTicket.aiOutcome === "escalated" ? "Escalated" : "AI Handled"}</span>
+                  <span>{new Date(selectedTicket.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {selectedTicket.sla?.overdue ? (
+                  <span style={{ ...statusBadgeBase, backgroundColor: "rgba(220, 38, 38, 0.15)", color: "#f87171" }}>
+                    Overdue
+                  </span>
+                ) : null}
+                <span style={{ ...statusBadgeBase, ...getTicketStatusStyle(selectedTicket.status) }}>
+                  {selectedTicket.status}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 0 }}>Live Conversation</h3>
+            <p style={mutedTextStyle}>Select a ticket to view details and chat.</p>
+          </div>
+        )}
+
         {!selectedTicket ? (
-          <p style={mutedTextStyle}>Select a ticket to open the live support chat.</p>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
+            No ticket selected.
+          </div>
         ) : (
           <div
             style={{
@@ -69,12 +97,14 @@ export default function LiveChat({
                       message.sender === "user"
                         ? "rgba(255,255,255,0.06)"
                         : message.sender === "admin"
-                          ? "rgba(245,158,11,0.17)"
-                          : "rgba(37,99,235,0.16)",
+                          ? "rgba(37,99,235,0.16)"
+                          : "rgba(99, 102, 241, 0.12)",
                     border:
                       message.sender === "admin"
-                        ? "1px solid rgba(245,158,11,0.32)"
-                        : "1px solid rgba(255,255,255,0.08)",
+                        ? "1px solid rgba(37,99,235,0.32)"
+                        : message.sender === "ai"
+                          ? "1px solid rgba(99, 102, 241, 0.2)"
+                          : "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
                   <div
@@ -110,19 +140,31 @@ export default function LiveChat({
           onChange={(e) => onTicketReplyChange(e.target.value)}
           placeholder="Type your response to the customer..."
           disabled={!selectedTicket || sendingTicketReply}
+          className="admin-reply-composer"
           style={{
             width: "100%",
-            minHeight: 240,
+            minHeight: 180,
             marginTop: 12,
             padding: 14,
             borderRadius: 14,
-            border: "1px solid #333",
-            backgroundColor: "#090909",
+            border: "1px solid rgba(255,255,255,0.1)",
+            backgroundColor: "rgba(0,0,0,0.2)",
             color: "#fff",
             resize: "vertical",
+            outline: "none",
           }}
         />
-        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {selectedTicket && selectedTicket.status !== "Resolved" ? (
+            <button
+              onClick={() => {
+                void onResolve(selectedTicket.id, "Resolved");
+              }}
+              style={{ ...smallButtonStyle, background: "rgba(255,255,255,0.06)", color: "var(--text-primary)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "none" }}
+            >
+              Mark Resolved
+            </button>
+          ) : null}
           <button
             onClick={() => {
               void onSendReply();
@@ -132,16 +174,6 @@ export default function LiveChat({
           >
             {sendingTicketReply ? "Sending..." : "Send Reply"}
           </button>
-          {selectedTicket ? (
-            <button
-              onClick={() => {
-                void onResolve(selectedTicket.id, "Resolved");
-              }}
-              style={smallButtonStyle}
-            >
-              Mark Resolved
-            </button>
-          ) : null}
         </div>
       </div>
     </div>

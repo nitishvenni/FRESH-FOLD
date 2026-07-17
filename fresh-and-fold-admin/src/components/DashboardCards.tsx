@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, CircleDollarSign, Clock3, ShoppingBag } from "lucide-react";
 import CountUp from "react-countup";
+import { useNavigate } from "react-router-dom";
 import { glassCard } from "../admin/styles";
 import Skeleton from "./Skeleton";
 
@@ -18,38 +19,42 @@ export default function DashboardCards({
   stats: DashboardStats;
   loading?: boolean;
 }) {
+  const navigate = useNavigate();
   const cards = [
     {
       title: "Total Orders",
       value: stats.totalOrders,
       detail: "Orders tracked across the full pipeline",
-      accent: "#60a5fa",
+      accent: "#2563EB",
       Icon: ShoppingBag,
       prefix: "",
+      href: "/orders",
     },
     {
       title: "Revenue",
       value: stats.totalRevenue,
       detail: "Collected from completed verified orders",
-      accent: "#f59e0b",
+      accent: "#F59E0B",
       Icon: CircleDollarSign,
-      prefix: "Rs. ",
+      prefix: "₹",
     },
     {
       title: "Active Orders",
       value: stats.activeOrders,
       detail: "Jobs currently moving through operations",
-      accent: "#22c55e",
+      accent: "#2563EB",
       Icon: Clock3,
       prefix: "",
+      href: "/orders",
     },
     {
       title: "Delivered Orders",
       value: stats.deliveredOrders,
       detail: "Orders completed and handed off successfully",
-      accent: "#f472b6",
+      accent: "#16A34A",
       Icon: CheckCircle2,
       prefix: "",
+      href: "/orders",
     },
   ];
 
@@ -80,20 +85,22 @@ export default function DashboardCards({
       {cards.map((card, index) => (
         <motion.div
           key={card.title}
+          onClick={() => {
+            if (card.href) navigate(card.href);
+          }}
           style={{
             ...glassCard,
-            padding: 22,
+            padding: 20,
             position: "relative",
             overflow: "hidden",
-            background: `radial-gradient(circle at top right, ${card.accent}24, transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.04))`,
+            cursor: card.href ? "pointer" : "default",
           }}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05, duration: 0.22, ease: "easeOut" }}
           whileHover={{
-            y: -4,
-            boxShadow: `0 18px 40px ${card.accent}18, 0 18px 40px rgba(0,0,0,0.24)`,
-            borderColor: `${card.accent}44`,
+            y: -2,
+            borderColor: `${card.accent}40`,
           }}
         >
           <div

@@ -31,6 +31,14 @@
       "expo-router",
       "expo-notifications",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Fresh & Fold uses your photos to scan garments for your review.",
+          "cameraPermission": "Fresh & Fold uses your camera to scan garments for your review.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Fresh & Fold uses your location to auto-fill your pickup and delivery address."

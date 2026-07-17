@@ -37,13 +37,13 @@ export default function RevenueHeatmap({ values }: { values: HeatmapValue[] }) {
               return "color-empty";
             }
             const intensity = maxRevenue ? value.revenue / maxRevenue : 0;
-            if (intensity >= 0.85) return "color-gold-4";
-            if (intensity >= 0.6) return "color-gold-3";
-            if (intensity >= 0.35) return "color-gold-2";
-            return "color-gold-1";
+            if (intensity >= 0.85) return "color-blue-4";
+            if (intensity >= 0.6) return "color-blue-3";
+            if (intensity >= 0.35) return "color-blue-2";
+            return "color-blue-1";
           }}
           tooltipDataAttrs={(value?: HeatmapValue) => ({
-            "data-tip": value?.date ? `${value.date}: Rs.${value.revenue} from ${value.count} orders` : "No revenue",
+            "data-tip": value?.date ? `${value.date}: ₹${value.revenue} from ${value.count} orders` : "No revenue",
           })}
           showWeekdayLabels
         />

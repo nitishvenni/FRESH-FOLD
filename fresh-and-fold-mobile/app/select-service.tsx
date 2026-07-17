@@ -1,51 +1,35 @@
+import { MaterialIcons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ServiceCard from "../components/ServiceCard";
-import Card from "../components/Card";
+import CategoryChips, { Category } from "../components/CategoryChips";
+import HorizontalServiceCard from "../components/HorizontalServiceCard";
+import ItemCard from "../components/ItemCard";
+import ServiceModeSelector from "../components/ServiceModeSelector";
 import { useAppTheme } from "../hooks/useAppTheme";
+import { allItems, clothingItems, homeItems, initialItems, ItemKey } from "../utils/bookingData";
+import { triggerImpactHaptic } from "../utils/haptics";
+import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
 
-type ServiceId = "wash" | "dry" | "express";
+type ServiceType = "wash" | "dry";
+type ServiceSpeed = "standard" | "express";
 
-const services: Array<{
-  id: ServiceId;
-  title: string;
-  description: string;
-  meta: string;
-  icon: React.ComponentProps<typeof MaterialIcons>["name"];
-  estimate: string;
-}> = [
+const SERVICE_OPTIONS = [
   {
-    id: "wash",
+    id: "wash" as ServiceType,
     title: "Wash & Iron",
-    description: "Everyday laundry care",
-    meta: "24 hour delivery",
-    icon: "local-laundry-service",
-    estimate: "Tomorrow evening",
+    description: "Clean wash with perfect iron",
+    icon: "local-laundry-service" as const,
+    imageSource: require("../assets/images/services/wash.jpg"),
   },
   {
-    id: "dry",
+    id: "dry" as ServiceType,
     title: "Dry Clean",
-    description: "Delicate garments",
-    meta: "2.5x premium care pricing",
-    icon: "dry-cleaning",
-    estimate: "Within 2 days",
-  },
-  {
-    id: "express",
-    title: "Express",
-    description: "24 hour delivery",
-    meta: "3x priority pricing",
-    icon: "bolt",
-    estimate: "Within 24 hours",
+    description: "Gentle care for delicate fabrics",
+    icon: "dry-cleaning" as const,
+    imageSource: require("../assets/images/services/dry.jpg"),
   },
 ];
 
@@ -53,79 +37,176 @@ export default function SelectService() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
-  const [selected, setSelected] = useState<ServiceId | null>(null);
 
-  const selectedService = useMemo(
-    () => services.find((service) => service.id === selected) ?? null,
-    [selected]
+  const [selectedSpeed, setSelectedSpeed] = useState<ServiceSpeed>("standard");
+  const [selectedType, setSelectedType] = useState<ServiceType>("wash");
+  const [selectedCategory, setSelectedCategory] = useState<Category>("all");
+  const [items, setItems] = useState(initialItems);
+
+  // Compute downstream service identifier based on speed toggle to respect backend contract.
+  const downstreamService = selectedSpeed === "express" ? "express" : selectedType;
+
+  // Compute totals using the existing pricing logic
+  const totalItems = useMemo(
+    () => Object.values(items).reduce((sum, qty) => sum + qty, 0),
+    [items]
   );
+  
+  const totalAmount = useMemo(
+    () => calculateSubtotal(items, downstreamService),
+    [items, downstreamService]
+  );
+
+  const updateQty = (key: ItemKey, delta: number) => {
+    setItems((prev) => ({
+      ...prev,
+      [key]: Math.max(0, prev[key] + delta),
+    }));
+  };
+
+  const handleContinue = () => {
+    void triggerImpactHaptic();
+    router.push({
+      pathname: "/schedule-basic",
+      params: {
+        service: downstreamService,
+        items: JSON.stringify(items),
+        total: totalAmount,
+      },
+    });
+  };
+
+  const visibleItems = useMemo(() => {
+    if (selectedCategory === "clothing") return clothingItems;
+    if (selectedCategory === "home") return homeItems;
+    return allItems;
+  }, [selectedCategory]);
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={[styles.backgroundGlowTop, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.22 : 0.9 }]} />
-      <View style={[styles.backgroundGlowBottom, { backgroundColor: theme.primarySoft, opacity: isDark ? 0.14 : 0.5 }]} />
-
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={{
-          paddingTop: insets.top + 24,
-          paddingBottom: insets.bottom + 132,
-        }}
-        showsVerticalScrollIndicator={false}
+      {/* Background Ambience */}
+      <View
+        style={[
+          styles.backgroundGlowTop,
+          { backgroundColor: theme.primarySoft, opacity: isDark ? 0.15 : 0.6 },
+        ]}
+      />
+      
+      {/* Custom Header */}
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top, paddingHorizontal: 20 },
+        ]}
       >
-        <Text style={[styles.header, { color: theme.text }]}>Select Service</Text>
-        <Text style={[styles.subheader, { color: theme.textMuted }]}>
-          Choose the laundry experience that fits your garments and delivery speed.
-        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
+          <MaterialIcons name="arrow-back" size={24} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>New Booking</Text>
+        <View style={styles.backButtonPlaceholder} />
+      </View>
 
-        <Card style={styles.estimateCard}>
-          <View style={styles.estimateHeader}>
-            <View style={[styles.estimateIconWrap, { backgroundColor: theme.primarySoft }]}>
-              <MaterialIcons name="schedule" size={18} color={theme.primary} />
-            </View>
-            <Text style={[styles.estimateLabel, { color: theme.textMuted }]}>Estimated delivery</Text>
+      <ServiceModeSelector selected={selectedSpeed} onChange={setSelectedSpeed} />
+
+      {/* Main Content */}
+      <View style={{ flex: 1, overflow: "hidden" }}>
+        <ScrollView
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + 110,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Choose Service</Text>
+            {SERVICE_OPTIONS.map((svc) => (
+              <HorizontalServiceCard
+                key={svc.id}
+                id={svc.id}
+                title={svc.title}
+                description={svc.description}
+                basePrice={getItemPriceForService("shirt", svc.id)}
+                icon={svc.icon}
+                imageSource={svc.imageSource}
+                selected={selectedType === svc.id}
+                onPress={() => setSelectedType(svc.id)}
+              />
+            ))}
           </View>
 
-          <Text style={[styles.estimateValue, { color: theme.text }]}>
-            {selectedService?.estimate ?? "Select a service to see delivery timing"}
-          </Text>
-          <Text style={[styles.estimateHelper, { color: theme.textMuted }]}>
-            {selectedService
-              ? `${selectedService.title} includes ${selectedService.meta.toLowerCase()}.`
-              : "Premium handling, live updates, and doorstep convenience are included."}
-          </Text>
-        </Card>
+          <View style={[styles.section, styles.itemsSection]}>
+            <View style={styles.itemsHeader}>
+              <View>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Items</Text>
+                <Text style={[styles.sectionSubtitle, { color: theme.textMuted }]}>
+                  Add items you want to clean
+                </Text>
+              </View>
+              {/* Optional price list button could go here */}
+            </View>
 
-        <View style={styles.cardsWrap}>
-          {services.map((service) => (
-            <ServiceCard
-              key={service.id}
-              title={service.title}
-              description={service.description}
-              meta={service.meta}
-              icon={service.icon}
-              selected={selected === service.id}
-              variant="selection"
-              onPress={() => setSelected(service.id)}
-            />
-          ))}
-        </View>
-      </ScrollView>
+            <CategoryChips selected={selectedCategory} onSelect={setSelectedCategory} />
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 18, backgroundColor: theme.glass }]}>
-        <TouchableOpacity
-          style={[styles.continueButton, { backgroundColor: theme.primary, shadowColor: theme.primary }, !selected && styles.continueButtonDisabled]}
-          disabled={!selected}
-          activeOpacity={0.9}
-          onPress={() =>
-            router.push({
-              pathname: "/select-items",
-              params: { service: selected },
-            })
-          }
+            <View style={styles.itemsList}>
+              {visibleItems.map((item, index) => (
+                <ItemCard
+                  key={item.key}
+                  item={{
+                    ...item,
+                    price: getItemPriceForService(item.key, downstreamService),
+                  }}
+                  quantity={items[item.key]}
+                  onAdd={() => updateQty(item.key, 1)}
+                  onRemove={() => updateQty(item.key, -1)}
+                  index={index}
+                />
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+
+      {/* Floating Bottom Summary */}
+      <View style={[styles.bottomBarWrap, { paddingBottom: insets.bottom || 20 }]}>
+        <BlurView
+          intensity={isDark ? 26 : 40}
+          tint={isDark ? "dark" : "light"}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={[
+            styles.bottomBarBorder,
+            {
+              backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.4)",
+              borderTopColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.7)",
+            },
+          ]}
         >
-          <Text style={styles.continueText}>Continue</Text>
-        </TouchableOpacity>
+          <View style={styles.bottomBarContent}>
+            <View>
+              <Text style={[styles.summaryCount, { color: theme.textMuted }]}>
+                {totalItems} {totalItems === 1 ? "Item" : "Items"}
+              </Text>
+              <Text style={[styles.summaryTotal, { color: theme.text }]}>₹{totalAmount}</Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleContinue}
+              disabled={totalItems === 0}
+              style={[
+                styles.continueBtn,
+                { backgroundColor: theme.primary },
+                totalItems === 0 && { opacity: 0.4 },
+              ]}
+            >
+              <Text style={styles.continueText}>Continue</Text>
+              <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -137,93 +218,97 @@ const styles = StyleSheet.create({
   },
   backgroundGlowTop: {
     position: "absolute",
-    top: -80,
-    right: -36,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-  },
-  backgroundGlowBottom: {
-    position: "absolute",
-    bottom: 120,
-    left: -70,
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
+    top: -100,
+    right: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
   },
   header: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  subheader: {
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: 24,
-  },
-  cardsWrap: {
-    marginTop: 18,
-    marginBottom: 10,
-  },
-  estimateCard: {
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 14,
-  },
-  estimateHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    justifyContent: "space-between",
+    minHeight: 56,
+    marginBottom: 16,
   },
-  estimateIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
     justifyContent: "center",
-    marginRight: 10,
   },
-  estimateLabel: {
-    fontSize: 14,
+  backButtonPlaceholder: {
+    width: 40,
+  },
+  headerTitle: {
+    fontSize: 17,
     fontWeight: "600",
   },
-  estimateValue: {
-    fontSize: 24,
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  estimateHelper: {
-    fontSize: 14,
-    lineHeight: 20,
+  itemsSection: {
+    paddingHorizontal: 0, 
   },
-  footer: {
+  itemsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    marginTop: -8,
+  },
+  itemsList: {
+    paddingHorizontal: 20,
+  },
+  bottomBarWrap: {
     position: "absolute",
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
+    overflow: "hidden",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  bottomBarBorder: {
+    borderTopWidth: 1,
+    paddingTop: 16,
     paddingHorizontal: 20,
-    paddingTop: 12,
   },
-  continueButton: {
-    height: 56,
-    borderRadius: 18,
+  bottomBarContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
   },
-  continueButtonDisabled: {
-    opacity: 0.45,
+  summaryCount: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  summaryTotal: {
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  continueBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    height: 52,
+    borderRadius: 26,
+    gap: 8,
   },
   continueText: {
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
-    color: "#FFFFFF",
   },
 });

@@ -30,12 +30,11 @@ export default function TopBar({
         justifyContent: "space-between",
         alignItems: "center",
         gap: 16,
-        padding: "22px 24px",
-        borderRadius: 24,
-        background: "linear-gradient(180deg, rgba(10,18,31,0.92), rgba(8,12,21,0.72))",
+        padding: "16px 24px",
+        borderRadius: 16,
+        background: "rgba(17, 24, 39, 0.4)",
         border: "1px solid rgba(255,255,255,0.08)",
-        boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
-        backdropFilter: "blur(18px)",
+        backdropFilter: "blur(12px)",
       }}
     >
       <div>
@@ -83,7 +82,7 @@ export default function TopBar({
               cursor: "pointer",
               display: "grid",
               placeItems: "center",
-              boxShadow: unreadNotificationCount ? "0 0 24px rgba(250,204,21,0.18)" : "none",
+              boxShadow: unreadNotificationCount ? "0 0 16px rgba(239,68,68,0.2)" : "none",
             }}
           >
             <Bell size={18} />

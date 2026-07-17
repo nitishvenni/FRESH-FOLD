@@ -44,16 +44,10 @@ export default function TicketTable({
       <table style={tableStyle}>
         <thead>
           <tr>
-            <th style={thStyle}>Ticket ID</th>
-            <th style={thStyle}>User Mobile</th>
-            <th style={thStyle}>Order</th>
-            <th style={thStyle}>Outcome</th>
-            <th style={thStyle}>Reason</th>
-            <th style={thStyle}>User Message</th>
-            <th style={thStyle}>Created</th>
+            <th style={thStyle}>Ticket & User</th>
+            <th style={thStyle}>Issue Preview</th>
             <th style={thStyle}>Status</th>
-            <th style={thStyle}>SLA</th>
-            <th style={thStyle}>Change Status</th>
+            <th style={thStyle}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -65,30 +59,35 @@ export default function TicketTable({
               onClick={() => onSelectTicket(ticket.id)}
               style={{
                 backgroundColor:
-                  selectedTicketId === ticket.id ? "rgba(245,158,11,0.12)" : "transparent",
+                  selectedTicketId === ticket.id ? "rgba(37,99,235,0.12)" : "transparent",
                 cursor: "pointer",
               }}
             >
-              <td style={tdStyle}>{ticket.id.slice(-6)}</td>
-              <td style={tdStyle}>{ticket.mobile}</td>
-              <td style={tdStyle}>{ticket.orderId ? String(ticket.orderId).slice(-6) : "-"}</td>
-              <td style={tdStyle}>{ticket.aiOutcome === "escalated" ? "Escalated" : "AI Handled"}</td>
-              <td style={tdStyle}>{ticket.reason}</td>
-              <td style={tdStyle}>{ticket.userMessage || ticket.message}</td>
-              <td style={tdStyle}>{new Date(ticket.createdAt).toLocaleString()}</td>
               <td style={tdStyle}>
-                <span style={{ ...statusBadgeBase, ...getTicketStatusStyle(ticket.status) }}>
-                  {ticket.status}
-                </span>
+                <div style={{ fontWeight: 600, fontFamily: "monospace", color: "var(--text-secondary)", marginBottom: 4 }}>
+                  #{ticket.id.slice(-6)}
+                </div>
+                <div>{ticket.mobile}</div>
+              </td>
+              <td style={{ ...tdStyle, maxWidth: 220 }}>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-primary)" }} title={ticket.userMessage || ticket.message}>
+                  {ticket.userMessage || ticket.message}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  {new Date(ticket.createdAt).toLocaleDateString()}
+                </div>
               </td>
               <td style={tdStyle}>
-                {ticket.sla?.overdue ? (
-                  <span style={{ ...statusBadgeBase, backgroundColor: "#dc2626", color: "#fff" }}>
-                    Overdue ({ticket.sla.overdueType})
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                  <span style={{ ...statusBadgeBase, ...getTicketStatusStyle(ticket.status) }}>
+                    {ticket.status}
                   </span>
-                ) : (
-                  "On Track"
-                )}
+                  {ticket.sla?.overdue ? (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#f87171" }}>
+                      OVERDUE
+                    </span>
+                  ) : null}
+                </div>
               </td>
               <td
                 style={tdStyle}
@@ -101,7 +100,7 @@ export default function TicketTable({
                   onChange={(e) => {
                     void onUpdateTicketStatus(ticket.id, e.target.value as SupportTicket["status"]);
                   }}
-                  style={selectStyle}
+                  style={{ ...selectStyle, padding: "6px 28px 6px 12px", borderRadius: 8, fontSize: 13, minWidth: "120px", width: "100%" }}
                 >
                   {TICKET_STATUSES.map((status) => (
                     <option key={status} value={status}>

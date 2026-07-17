@@ -5,6 +5,14 @@ export interface AuthRequest extends Request {
   user?: any;
 }
 
+const sendUnauthorized = (res: Response, message: string) => {
+  const requestId = res.locals.aiRequestId;
+  return res.status(401).json({
+    message,
+    ...(typeof requestId === "string" ? { requestId } : {}),
+  });
+};
+
 export const authMiddleware = (
   req: AuthRequest,
   res: Response,
@@ -16,7 +24,7 @@ export const authMiddleware = (
     .trim();
 
   if (!token || token === "null" || token === "undefined") {
-    return res.status(401).json({ message: "No token provided" });
+    return sendUnauthorized(res, "No token provided");
   }
 
   try {
@@ -28,6 +36,6 @@ export const authMiddleware = (
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
+    return sendUnauthorized(res, "Invalid token");
   }
 };

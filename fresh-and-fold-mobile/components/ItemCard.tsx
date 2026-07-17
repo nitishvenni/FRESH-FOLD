@@ -3,7 +3,6 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { triggerSelectionHaptic } from "../utils/haptics";
-import Card from "./Card";
 
 const ICONS = {
   shirt: "tshirt-crew",
@@ -39,38 +38,52 @@ export default function ItemCard({
   onRemove,
   index = 0,
 }: ItemCardProps) {
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 40).duration(320)}>
-      <Card style={styles.card}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)",
+            borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)",
+          },
+        ]}
+      >
         <View style={styles.row}>
           <View style={styles.leftSide}>
             <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
               <MaterialCommunityIcons name={ICONS[item.key]} size={26} color={theme.primary} />
             </View>
             <View style={styles.copy}>
-              <Text style={[styles.name, { color: theme.text }]}>{item.name}</Text>
-              <Text style={[styles.price, { color: theme.textMuted }]}>Rs.{item.price} per item</Text>
+              <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={[styles.price, { color: theme.textMuted }]}>₹{item.price} per item</Text>
             </View>
           </View>
 
           <View style={styles.counter}>
             <TouchableOpacity
               onPress={() => {
-                void triggerSelectionHaptic();
-                onRemove();
+                if (quantity > 0) {
+                  void triggerSelectionHaptic();
+                  onRemove();
+                }
               }}
               style={[
                 styles.btn,
                 { backgroundColor: theme.surfaceAlt },
                 quantity === 0 && {
-                  backgroundColor: theme.background,
+                  backgroundColor: "transparent",
                   borderWidth: 1,
                   borderColor: theme.border,
+                  opacity: 0.5,
                 },
               ]}
               activeOpacity={0.85}
+              disabled={quantity === 0}
             >
               <Text style={[styles.btnText, { color: quantity === 0 ? theme.textMuted : theme.text }]}>-</Text>
             </TouchableOpacity>
@@ -95,15 +108,17 @@ export default function ItemCard({
             </TouchableOpacity>
           </View>
         </View>
-      </Card>
+      </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: 14,
-    padding: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   row: {
     flexDirection: "row",

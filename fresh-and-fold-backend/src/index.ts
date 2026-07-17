@@ -21,6 +21,8 @@ import SupportInteraction from "./models/SupportInteraction";
 import PaymentAttempt from "./models/PaymentAttempt";
 import { authMiddleware, AuthRequest } from "./middleware/authMiddleware";
 import { createRateLimit } from "./middleware/rateLimit";
+import { registerGarmentRecognitionRoutes } from "./ai/garmentRecognition";
+import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
 import { sendPushNotification } from "./utils/pushNotifications";
 import {
   buildControlledSupportReply,
@@ -203,6 +205,14 @@ app.use(
   })
 );
 app.use(express.json());
+
+app.use(
+  "/ai",
+  createAiRouter({
+    rateLimit: createConfiguredAiRateLimit(),
+    registerRoutes: registerGarmentRecognitionRoutes,
+  })
+);
 
 app.get("/", (_req, res) => {
   res.json({

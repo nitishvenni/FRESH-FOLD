@@ -1,4 +1,4 @@
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, Feather, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -10,7 +10,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Card from "../components/Card";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+
 import OrderTimeline from "../components/OrderTimeline";
 import TrackOrderSkeleton from "../components/TrackOrderSkeleton";
 import { useAppTheme } from "../hooks/useAppTheme";
@@ -26,6 +27,7 @@ type Order = {
   status: string;
 };
 
+// DO NOT CHANGE: Exact backend statuses mapped to timeline
 const steps = [
   "Scheduled",
   "Received at Facility",
@@ -36,11 +38,33 @@ const steps = [
   "Delivered",
 ];
 
+// Display mappings for Hero
+const displayLabels: Record<string, string> = {
+  "Scheduled": "Pickup Scheduled",
+  "Received at Facility": "Received at Facility",
+  "Picked Up": "Order Picked Up",
+  "Washing": "Washing in Progress",
+  "Ironing": "Ironing in Progress",
+  "Out for Delivery": "Out for Delivery",
+  "Delivered": "Order Delivered",
+};
+
+const displayDescriptions: Record<string, string> = {
+  "Scheduled": "Your order has been scheduled successfully.",
+  "Received at Facility": "Your clothes have reached our laundry facility.",
+  "Picked Up": "Your clothes have been picked up by our partner.",
+  "Washing": "We are washing your clothes with premium care.",
+  "Ironing": "Your clothes will be pressed to perfection.",
+  "Out for Delivery": "Your fresh clothes are on the way to you.",
+  "Delivered": "Enjoy your fresh & folded clothes!",
+};
+
 export default function TrackOrder() {
   const router = useRouter();
   const { orderId, status } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
+  
   const [order, setOrder] = useState<Order | null>(
     orderId
       ? {
@@ -119,193 +143,312 @@ export default function TrackOrder() {
     return (
       <View style={[styles.loader, { backgroundColor: theme.background }]}>
         <Text style={{ color: theme.text }}>Order not found</Text>
+        <TouchableOpacity 
+          style={{ marginTop: 20 }}
+          onPress={() => router.replace("/home")}
+        >
+          <Text style={{ color: theme.primary }}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   const currentStepIndex = steps.indexOf(order.status);
+  const displayTitle = displayLabels[order.status] || order.status;
+  const displaySubtitle = displayDescriptions[order.status] || "We are taking care of your order.";
 
   return (
-	      <ScrollView
-	        style={[styles.container, { backgroundColor: theme.background }]}
-	        contentContainerStyle={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 28 }}
-	        showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                void (async () => {
-                  try {
-                    setRefreshing(true);
-                    await fetchOrder();
-                  } finally {
-                    setRefreshing(false);
-                  }
-                })();
-              }}
-              tintColor={theme.primary}
-            />
-          }
-	      >
-      <Text style={[styles.header, { color: theme.text }]}>Track Order</Text>
-      <Text style={[styles.subheader, { color: theme.textMuted }]}>
-        Follow your laundry progress from pickup to doorstep delivery.
-      </Text>
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      {/* Background Atmosphere */}
+      <View
+        style={[
+          styles.backgroundGlowTop,
+          { backgroundColor: theme.primarySoft, opacity: isDark ? 0.15 : 0.5 },
+        ]}
+      />
 
-      <Card style={[styles.heroCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={styles.heroRow}>
-          <View style={[styles.heroIcon, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="local-laundry-service" size={22} color={theme.primary} />
-          </View>
-          <View>
-            <Text style={[styles.orderLabel, { color: theme.textMuted }]}>Order ID</Text>
-            <Text style={[styles.orderValue, { color: theme.text }]}>#{order._id.slice(-6)}</Text>
-          </View>
-        </View>
-        <Text style={[styles.statusTitle, { color: theme.text }]}>Current status: {order.status}</Text>
-      </Card>
-
-      <Card style={[styles.timelineCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <Text style={[styles.timelineHeading, { color: theme.text }]}>Order Timeline</Text>
-        <OrderTimeline steps={steps} currentStep={Math.max(currentStepIndex, 0)} />
-      </Card>
-
-      <Card style={[styles.statusCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <Text style={[styles.statusLabel, { color: theme.textMuted }]}>Current Status</Text>
-        <Text style={[styles.statusValue, { color: theme.text }]}>{order.status}</Text>
-      </Card>
-
-      <Card style={[styles.supportCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <Text style={[styles.supportTitle, { color: theme.text }]}>Need Help?</Text>
-        <Text style={[styles.supportCopy, { color: theme.textMuted }]}>
-          Contact support for pickup changes, delivery updates, or special garment instructions.
-        </Text>
+      {/* Custom Premium Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
-          style={[styles.supportButton, { backgroundColor: theme.primarySoft }]}
-          activeOpacity={0.9}
+          style={[styles.headerButton, { backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.7)" }]}
+          onPress={() => {
+            void triggerImpactHaptic();
+            router.back();
+          }}
+        >
+          <Feather name="chevron-left" size={24} color={theme.text} />
+        </TouchableOpacity>
+        
+        <View style={styles.headerTitleWrap}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Track Your Order</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
+            Order #{order._id.slice(-6).toUpperCase()}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.headerButton, { backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.7)" }]}
           onPress={() => {
             void triggerImpactHaptic();
             router.push("/support");
           }}
         >
-          <Text style={[styles.supportButtonText, { color: theme.primary }]}>Contact Support</Text>
+          <Feather name="headphones" size={20} color={theme.text} />
         </TouchableOpacity>
-      </Card>
+      </View>
 
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: theme.text }]}
-        activeOpacity={0.9}
-        onPress={() => {
-          void triggerImpactHaptic();
-          router.replace("/home");
-        }}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void (async () => {
+                try {
+                  setRefreshing(true);
+                  await fetchOrder();
+                } finally {
+                  setRefreshing(false);
+                }
+              })();
+            }}
+            tintColor={theme.primary}
+          />
+        }
       >
-        <Text style={[styles.buttonText, { color: theme.surface }]}>Back to Home</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* CURRENT STATUS HERO */}
+        <Animated.View entering={FadeInDown.delay(100).duration(300)}>
+          <View
+            style={[
+              styles.heroCard,
+              {
+                backgroundColor: isDark ? "rgba(37,99,235,0.15)" : "rgba(235,242,255,0.8)",
+                borderColor: isDark ? "rgba(37,99,235,0.25)" : "rgba(219,234,254,1)",
+              },
+            ]}
+          >
+            <View style={styles.heroContent}>
+              <Text style={[styles.heroLabel, { color: theme.primary }]}>CURRENT STATUS</Text>
+              <Text style={[styles.heroTitle, { color: theme.text }]}>{displayTitle}</Text>
+              <Text style={[styles.heroSubtitle, { color: theme.textMuted }]}>{displaySubtitle}</Text>
+            </View>
+            <View style={styles.heroVisualWrap}>
+              <View style={[styles.heroIconCircle, { backgroundColor: theme.primary }]}>
+                 <MaterialIcons name="local-laundry-service" size={42} color="#FFFFFF" />
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* ORDER TIMELINE */}
+        <Animated.View entering={FadeInUp.delay(200).duration(300)}>
+          <View style={[styles.timelineCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <OrderTimeline steps={steps} currentStep={Math.max(currentStepIndex, 0)} />
+          </View>
+        </Animated.View>
+
+        {/* CARE PROMISE CARD */}
+        <Animated.View entering={FadeInUp.delay(250).duration(300)}>
+          <View style={[styles.promiseCard, { backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.6)", borderColor: theme.border }]}>
+            <View style={[styles.promiseIconWrap, { backgroundColor: theme.primarySoft }]}>
+              <Feather name="shield" size={24} color={theme.primary} />
+            </View>
+            <View style={styles.promiseContent}>
+              <Text style={[styles.promiseTitle, { color: theme.text }]}>We care for your clothes</Text>
+              <Text style={[styles.promiseSubtitle, { color: theme.textMuted }]}>
+                Premium detergents, hygienic wash & perfect care every time.
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* COMPACT SUPPORT STRIP */}
+        <Animated.View entering={FadeInUp.delay(300).duration(300)}>
+          <TouchableOpacity
+            style={[styles.supportStrip, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            activeOpacity={0.9}
+            onPress={() => {
+              void triggerImpactHaptic();
+              router.push("/support");
+            }}
+          >
+            <View style={styles.supportStripLeft}>
+              <Ionicons name="checkmark-done-circle-outline" size={20} color={theme.textMuted} />
+              <Text style={[styles.supportStripText, { color: theme.textMuted }]}>Secure. Reliable. Always on time.</Text>
+            </View>
+            <View style={styles.supportStripRight}>
+              <Text style={[styles.supportStripLink, { color: theme.primary }]}>Contact Support</Text>
+              <Feather name="chevron-right" size={16} color={theme.primary} />
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+        
+        {/* Bottom padding spacing for TabBar if needed */}
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   loader: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -100,
+    right: -50,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+  },
   header: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  subheader: {
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: 20,
-  },
-  heroCard: {
-    marginBottom: 16,
-  },
-  heroRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    zIndex: 10,
   },
-  heroIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
   },
-  orderLabel: {
-    fontSize: 13,
-    marginBottom: 3,
+  headerTitleWrap: {
+    alignItems: "center",
   },
-  orderValue: {
+  headerTitle: {
     fontSize: 18,
     fontWeight: "700",
   },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  timelineCard: {
-    marginBottom: 14,
-  },
-  timelineHeading: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 18,
-  },
-  statusCard: {
-    marginBottom: 14,
-  },
-  statusLabel: {
+  headerSubtitle: {
     fontSize: 13,
-    marginBottom: 6,
+    marginTop: 2,
   },
-  statusValue: {
-    fontSize: 20,
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 40,
+  },
+  heroCard: {
+    flexDirection: "row",
+    padding: 24,
+    borderRadius: 24,
+    borderWidth: 1,
+    marginBottom: 20,
+    alignItems: "center",
+    justifyContent: "space-between",
+    overflow: "hidden",
+  },
+  heroContent: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  heroLabel: {
+    fontSize: 11,
     fontWeight: "800",
-  },
-  supportCard: {
-    marginBottom: 6,
-  },
-  supportTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    letterSpacing: 0.8,
     marginBottom: 8,
   },
-  supportCopy: {
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  heroSubtitle: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 14,
   },
-  supportButton: {
-    height: 46,
-    borderRadius: 14,
+  heroVisualWrap: {
+    width: 80,
+    height: 80,
     alignItems: "center",
     justifyContent: "center",
   },
-  supportButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
+  heroIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  button: {
-    height: 52,
+  timelineCard: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  promiseCard: {
+    flexDirection: "row",
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  promiseIconWrap: {
+    width: 48,
+    height: 48,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 18,
-    marginBottom: 20,
+    marginRight: 16,
   },
-  buttonText: {
-    fontSize: 15,
+  promiseContent: {
+    flex: 1,
+  },
+  promiseTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  promiseSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  supportStrip: {
+    flexDirection: "row",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  supportStripLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  supportStripText: {
+    fontSize: 12,
+  },
+  supportStripRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  supportStripLink: {
+    fontSize: 13,
     fontWeight: "700",
   },
 });

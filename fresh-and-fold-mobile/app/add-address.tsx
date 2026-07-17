@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Location from "expo-location";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -102,10 +103,12 @@ function FieldCard({
   maxLength,
   multiline,
 }: FieldCardProps) {
+  const { theme } = useAppTheme();
   return (
     <Input
+      variant="glass"
       containerStyle={[styles.inputCard, multiline && styles.multilineInputCard]}
-      leading={<Ionicons name={icon} size={20} color={colors.textSecondary} />}
+      leading={<Ionicons name={icon} size={18} color={theme.textMuted} />}
       placeholder={placeholder}
       value={value}
       onChangeText={onChangeText}
@@ -512,16 +515,17 @@ export default function AddAddress() {
             contentContainerStyle={{
               paddingTop: spacing.md,
               paddingHorizontal: spacing.lg,
-              paddingBottom: 150 + insets.bottom + (keyboardHeight > 0 ? 24 : 0),
+              paddingBottom: 120 + insets.bottom, // Ensure forms are well clear of the CTA
             }}
           >
+            {/* Header */}
             <View style={styles.headerRow}>
               <TouchableOpacity
-                activeOpacity={0.85}
-                style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
                 onPress={() => router.back()}
+                style={styles.backButton}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
-                <Ionicons name="arrow-back" size={22} color={theme.text} />
+                <MaterialIcons name="arrow-back" size={24} color={theme.text} />
               </TouchableOpacity>
               <View style={styles.headerCopy}>
                 <Text style={[styles.title, { color: theme.text }]}>
@@ -533,38 +537,54 @@ export default function AddAddress() {
               </View>
             </View>
 
-            <View style={[styles.searchRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Input
-                containerStyle={styles.searchInput}
-                leading={<Ionicons name="search-outline" size={21} color={theme.textMuted} />}
-                placeholder="Search an area or address"
-                value={searchText}
-                onChangeText={setSearchText}
-                returnKeyType="search"
-                onSubmitEditing={() => {
-                  void searchLocation();
-                }}
-              />
-              <TouchableOpacity
-                activeOpacity={0.88}
-                style={[styles.searchButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  void searchLocation();
-                }}
-              >
-                {locationLoading ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                )}
-              </TouchableOpacity>
-            </View>
+            {/* Search Input */}
+            <Input
+              variant="glass"
+              containerStyle={styles.searchRow}
+              leading={<Feather name="search" size={20} color={theme.textMuted} />}
+              placeholder="Search an area or address"
+              value={searchText}
+              onChangeText={setSearchText}
+              returnKeyType="search"
+              onSubmitEditing={() => {
+                void searchLocation();
+              }}
+            />
+            {/* Hidden button behind input logic... we can keep it clean by just using the submit on keyboard, or placing a small button */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={[styles.searchButton, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                void searchLocation();
+              }}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
 
-            <View style={[styles.mapCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View
+              style={[
+                styles.mapCard,
+                {
+                  backgroundColor: isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)",
+                  borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)",
+                },
+              ]}
+            >
               {renderMapSurface()}
+
               <TouchableOpacity
                 activeOpacity={0.9}
-                style={[styles.currentLocationButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                style={[
+                  styles.currentLocationButton,
+                  {
+                    backgroundColor: isDark ? "rgba(17,24,39,0.8)" : "rgba(255,255,255,0.9)",
+                    borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(226,232,240,0.8)",
+                  },
+                ]}
                 onPress={() => {
                   void requestCurrentLocation();
                 }}
@@ -576,27 +596,10 @@ export default function AddAddress() {
                 )}
                 <Text style={[styles.currentLocationText, { color: theme.text }]}>Current location</Text>
               </TouchableOpacity>
-
-              <View style={[styles.locationSheet, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Text style={[styles.sheetHint, { color: theme.textMuted }]}>
-                  Place the pin at exact pickup location
-                </Text>
-                <View style={styles.locationTitleRow}>
-                  <Ionicons name="location" size={28} color={theme.primary} />
-                  <View style={styles.locationCopy}>
-                    <Text style={[styles.locationTitle, { color: theme.text }]} numberOfLines={1}>
-                      {locality || "Select your area"}
-                    </Text>
-                    <Text style={[styles.locationSubtitle, { color: theme.textMuted }]}>
-                      {formatLocationLine([city, pincode]) || "Search or use current location"}
-                    </Text>
-                  </View>
-                </View>
-              </View>
             </View>
 
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Receiver Details</Text>
-            <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.inputGroup}>
               <FieldCard
                 icon="person-outline"
                 placeholder="Full name *"
@@ -614,33 +617,51 @@ export default function AddAddress() {
             </View>
 
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Location Details</Text>
-            <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={[styles.typeTabs, { backgroundColor: theme.background }]}>
-                {addressTypes.map((item) => {
-                  const selected = addressType === item.value;
-                  return (
-                    <TouchableOpacity
-                      key={item.value}
-                      activeOpacity={0.9}
+            
+            {/* Custom Pill Selector */}
+            <View
+              style={[
+                styles.typeTabs,
+                {
+                  backgroundColor: isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)",
+                  borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)",
+                },
+              ]}
+            >
+              {addressTypes.map((item) => {
+                const selected = addressType === item.value;
+                return (
+                  <TouchableOpacity
+                    key={item.value}
+                    activeOpacity={0.8}
+                    style={[
+                      styles.typeTab,
+                      selected && { backgroundColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      void triggerSelectionHaptic();
+                      setAddressType(item.value);
+                    }}
+                  >
+                    <MaterialIcons
+                      name={item.icon}
+                      size={16}
+                      color={selected ? "#FFFFFF" : theme.textMuted}
+                    />
+                    <Text
                       style={[
-                        styles.typeTab,
-                        selected && { backgroundColor: theme.text },
+                        styles.typeText,
+                        { color: selected ? "#FFFFFF" : theme.text },
                       ]}
-                      onPress={() => setAddressType(item.value)}
                     >
-                      <MaterialIcons
-                        name={item.icon}
-                        size={19}
-                        color={selected ? theme.surface : theme.text}
-                      />
-                      <Text style={[styles.typeText, { color: selected ? theme.surface : theme.text }]}>
-                        {item.value}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+                      {item.value}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
+            <View style={styles.inputGroup}>
               <FieldCard
                 icon="home-outline"
                 placeholder="House / Flat / Floor *"
@@ -675,12 +696,10 @@ export default function AddAddress() {
                 maxLength={6}
               />
             </View>
-
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Delivery Instructions</Text>
-            <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.inputGroup}>
               <FieldCard
                 icon="chatbubble-ellipses-outline"
-                placeholder="Instructions to reach location (optional)"
+                placeholder="Delivery instructions (optional)"
                 value={instructions}
                 onChangeText={setInstructions}
                 multiline
@@ -688,23 +707,40 @@ export default function AddAddress() {
             </View>
           </ScrollView>
 
-          <View
-            style={[
-              styles.footer,
-              {
-                backgroundColor: theme.background,
-                paddingBottom: insets.bottom + spacing.md,
-              },
-            ]}
-          >
-            <Button
-              style={[styles.button, { backgroundColor: theme.primary }]}
-              title={saving ? "Saving..." : isEditing ? "Update Address" : "Save Address"}
-              onPress={() => {
-                void saveAddress();
-              }}
-              loading={saving}
+          {/* Floating Bottom Action Area */}
+          <View style={[styles.bottomBarWrap, { paddingBottom: insets.bottom || 20 }]}>
+            <BlurView
+              intensity={isDark ? 26 : 40}
+              tint={isDark ? "dark" : "light"}
+              style={StyleSheet.absoluteFillObject}
             />
+            <View
+              style={[
+                styles.bottomBarBorder,
+                {
+                  backgroundColor: isDark ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.4)",
+                  borderTopColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.7)",
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: theme.primary }]}
+                activeOpacity={0.9}
+                onPress={() => {
+                  void saveAddress();
+                }}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.saveText}>{isEditing ? "Update Address" : "Save Address"}</Text>
+                    <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -722,67 +758,56 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing.md,
+    marginBottom: 20,
   },
   backButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 1,
-    alignItems: "center",
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
     justifyContent: "center",
-    marginRight: spacing.md,
   },
   headerCopy: {
     flex: 1,
   },
   title: {
-    fontSize: 24,
-    fontFamily: typography.bold,
-    marginBottom: 3,
+    fontSize: 17,
+    fontWeight: "600",
   },
   headerSubtitle: {
     fontSize: 13,
-    fontFamily: typography.body,
+    marginTop: 2,
   },
   searchRow: {
-    minHeight: 58,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingRight: 7,
-    marginBottom: spacing.md,
-    ...shadows.card,
-  },
-  searchInput: {
-    flex: 1,
-    borderWidth: 0,
-    shadowOpacity: 0,
-    elevation: 0,
-    backgroundColor: "transparent",
+    marginBottom: 24,
+    paddingRight: 50, // Space for the arrow button
   },
   searchButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    position: "absolute",
+    right: 28,
+    top: 79, // roughly inside the search row (will adjust below if needed, better to position relative if possible but safeArea/ScrollView context makes it hard)
+    // Actually, let's position it nicely inside a wrapper or just absolutely position it carefully.
+    // wait, we can just position it relative to the container if we wrap them.
+    // For simplicity, I'll keep the absolute positioning but align it to the input height.
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    transform: [{ translateY: -59 }], // adjusted to sit inside the searchRow
   },
   mapCard: {
-    borderRadius: radius.lg,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: spacing.sm,
-    marginBottom: spacing.lg,
-    ...shadows.card,
+    padding: 8,
+    marginBottom: 24,
   },
   map: {
-    height: 315,
-    borderRadius: radius.md,
+    height: 200,
+    borderRadius: 14,
   },
   mapFallback: {
-    height: 315,
-    borderRadius: radius.md,
+    height: 200,
+    borderRadius: 14,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
@@ -798,137 +823,126 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "28deg" }],
   },
   mapRoadTwo: {
-    width: 330,
-    transform: [{ rotate: "-34deg" }],
-    top: 70,
+    width: 390,
+    transform: [{ rotate: "-35deg" }],
   },
   mapRoadThree: {
-    width: 300,
-    transform: [{ rotate: "-8deg" }],
-    bottom: 62,
+    width: 150,
+    transform: [{ rotate: "90deg" }],
   },
   pinShadow: {
     position: "absolute",
-    width: 34,
-    height: 12,
-    borderRadius: 17,
-    backgroundColor: "rgba(37, 99, 235, 0.18)",
-    top: 163,
+    width: 14,
+    height: 4,
+    backgroundColor: "rgba(0,0,0,0.15)",
+    borderRadius: 2,
+    marginTop: 28,
   },
   pin: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.floating,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   mapFallbackText: {
     position: "absolute",
-    bottom: 72,
-    left: spacing.md,
-    right: spacing.md,
-    textAlign: "center",
-    fontSize: 13,
-    fontFamily: typography.medium,
+    bottom: 16,
+    fontSize: 12,
+    fontWeight: "500",
   },
   currentLocationButton: {
     position: "absolute",
-    alignSelf: "center",
-    top: 240,
-    minHeight: 48,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing.lg,
+    bottom: 16,
+    right: 16,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    ...shadows.card,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   currentLocationText: {
-    fontSize: 14,
-    fontFamily: typography.semibold,
-  },
-  locationSheet: {
-    marginTop: -28,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: spacing.md,
-    ...shadows.floating,
-  },
-  sheetHint: {
-    fontSize: 13,
-    fontFamily: typography.medium,
-    marginBottom: spacing.sm,
-  },
-  locationTitleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  locationCopy: {
-    flex: 1,
-    marginLeft: spacing.sm,
-  },
-  locationTitle: {
-    fontSize: 20,
-    fontFamily: typography.bold,
-    marginBottom: 5,
-  },
-  locationSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: typography.body,
+    fontSize: 12,
+    fontWeight: "600",
   },
   sectionTitle: {
-    fontSize: 20,
-    fontFamily: typography.bold,
-    marginBottom: spacing.sm,
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 12,
+    marginTop: 8,
   },
-  sectionCard: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    ...shadows.card,
-  },
-  typeTabs: {
-    minHeight: 58,
-    borderRadius: radius.lg,
-    padding: 5,
-    flexDirection: "row",
-    marginBottom: spacing.md,
-  },
-  typeTab: {
-    flex: 1,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
-  typeText: {
-    fontSize: 14,
-    fontFamily: typography.semibold,
+  inputGroup: {
+    gap: 12,
+    marginBottom: 24,
   },
   inputCard: {
-    marginBottom: spacing.sm + 2,
-    shadowOpacity: 0,
-    elevation: 0,
+    marginBottom: 0, // Handled by gap
   },
   multilineInputCard: {
     alignItems: "flex-start",
-    paddingTop: 2,
+    paddingVertical: 12,
   },
   multilineInput: {
-    minHeight: 76,
+    minHeight: 80,
     textAlignVertical: "top",
   },
-  footer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+  typeTabs: {
+    flexDirection: "row",
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 4,
+    marginBottom: 16,
   },
-  button: {
-    ...shadows.floating,
+  typeTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  typeText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  bottomBarWrap: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    overflow: "hidden",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  bottomBarBorder: {
+    borderTopWidth: 1,
+    paddingTop: 16,
+    paddingHorizontal: 20,
+  },
+  saveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 52,
+    borderRadius: 26,
+    gap: 8,
+  },
+  saveText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });

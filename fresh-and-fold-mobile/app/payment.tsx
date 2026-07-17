@@ -180,11 +180,25 @@ export default function Payment() {
   };
 
   const startRazorpayPayment = async () => {
+    if (__DEV__) {
+      console.log("[RAZORPAY DEBUG] Creating payment order in backend...");
+    }
     const data = await createPaymentOrder({
       addressId,
       items: getOrderItems(),
       service,
     });
+
+    if (__DEV__) {
+      console.log("[RAZORPAY DEBUG] Backend Response:", {
+        success: data?.success,
+        keyIdPreview: data?.keyId ? `${data.keyId.substring(0, 8)}...` : null,
+        mock: data?.mock,
+        paymentOrderId: data?.paymentOrder?.id,
+        amount: data?.paymentOrder?.amount,
+        currency: data?.paymentOrder?.currency,
+      });
+    }
 
     let paymentResult: {
       razorpay_payment_id: string;
@@ -192,26 +206,49 @@ export default function Payment() {
       razorpay_signature: string;
     };
 
-    if (data.mock) {
+    if (data?.mock) {
+      if (__DEV__) {
+        console.log("[RAZORPAY DEBUG] Using mock payment flow.");
+      }
       paymentResult = {
         razorpay_payment_id: `pay_mock_${Date.now()}`,
-        razorpay_order_id: data.paymentOrder.id,
+        razorpay_order_id: data?.paymentOrder?.id || "mock_order_id",
         razorpay_signature: "mock_signature",
       };
     } else {
       try {
+        if (__DEV__) {
+          console.log("[RAZORPAY DEBUG] Opening RazorpayCheckout with options:", {
+            key: data?.keyId ? "PRESENT" : "MISSING",
+            amount: data?.paymentOrder?.amount,
+            currency: data?.paymentOrder?.currency,
+            order_id: data?.paymentOrder?.id,
+          });
+        }
+
         paymentResult = await RazorpayCheckout.open({
-          key: data.keyId,
-          amount: data.paymentOrder.amount,
-          currency: data.paymentOrder.currency,
-          order_id: data.paymentOrder.id,
+          key: data?.keyId,
+          amount: data?.paymentOrder?.amount,
+          currency: data?.paymentOrder?.currency,
+          order_id: data?.paymentOrder?.id,
           name: "Fresh & Fold",
           description: "Laundry order payment",
           theme: { color: "#2563EB" },
         });
+
+        if (__DEV__) {
+          console.log("[RAZORPAY DEBUG] Payment Success!");
+        }
       } catch (error: any) {
+        if (__DEV__) {
+          console.log("[RAZORPAY DEBUG] Checkout Failed. Error:", {
+            code: error?.code,
+            description: error?.description,
+            message: error?.message,
+          });
+        }
         await logFailedPayment({
-          paymentOrderId: data.paymentOrder.id,
+          paymentOrderId: data?.paymentOrder?.id,
           paymentId: error?.razorpay_payment_id,
           reason: getPaymentFailureMessage(error),
           metadata: {
@@ -220,7 +257,16 @@ export default function Payment() {
             description: error?.description,
           },
         });
-        throw error;
+        
+        if (__DEV__) {
+          // TEMPORARY: throw the detailed error message for UI toast during debugging
+          const detailedError = new Error(
+            `DEBUG ERROR: code=${error?.code || "none"}, desc=${error?.description || error?.message || "unknown"}`
+          );
+          throw detailedError;
+        } else {
+          throw error;
+        }
       }
     }
 

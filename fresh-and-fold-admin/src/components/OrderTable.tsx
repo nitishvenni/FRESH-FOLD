@@ -29,10 +29,10 @@ export default function OrderTable({
   onSelectOrder: (order: Order) => void;
   selectedOrderId: string | null;
 }) {
-  const paymentStatusStyles: Record<Order["paymentStatus"], { label: string; backgroundColor: string }> = {
-    paid: { label: "Paid", backgroundColor: "#16a34a" },
-    verified: { label: "Verified", backgroundColor: "#0891b2" },
-    failed: { label: "Failed", backgroundColor: "#dc2626" },
+  const paymentStatusStyles: Record<Order["paymentStatus"], { label: string; backgroundColor: string; color: string }> = {
+    paid: { label: "Paid", backgroundColor: "rgba(22, 163, 74, 0.15)", color: "#4ade80" },
+    verified: { label: "Verified", backgroundColor: "rgba(8, 145, 178, 0.15)", color: "#22d3ee" },
+    failed: { label: "Failed", backgroundColor: "rgba(220, 38, 38, 0.15)", color: "#f87171" },
   };
 
   if (loading) {
@@ -46,7 +46,11 @@ export default function OrderTable({
   }
 
   if (orders.length === 0) {
-    return <p>No orders found.</p>;
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+        <p style={{ margin: 0, fontSize: 16 }}>No orders match your current filters.</p>
+      </div>
+    );
   }
 
   return (
@@ -78,13 +82,13 @@ export default function OrderTable({
 	              onClick={() => onSelectOrder(order)}
               style={{
                 cursor: "pointer",
-                background: selectedOrderId === order._id ? "rgba(242,169,73,0.09)" : "transparent",
+                background: selectedOrderId === order._id ? "rgba(37,99,235,0.12)" : "transparent",
               }}
 	            >
-	              <td style={tdStyle}>{order._id.slice(-6)}</td>
+	              <td style={{ ...tdStyle, fontFamily: "monospace", color: "var(--text-secondary)" }}>#{order._id.slice(-6)}</td>
 	              <td style={tdStyle}>{order.mobile || "-"}</td>
 	              <td style={tdStyle}>{order.service || "-"}</td>
-	              <td style={tdStyle}>Rs.{order.totalAmount}</td>
+	              <td style={{ ...tdStyle, fontWeight: 600 }}>₹{order.totalAmount}</td>
               <td style={tdStyle}>
 	                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
 	                  <span>pay_{order.paymentId ? order.paymentId.slice(-8) : "-"}</span>
@@ -99,7 +103,7 @@ export default function OrderTable({
 	                    style={{
 	                      ...statusBadgeBase,
 	                      backgroundColor: paymentState.backgroundColor,
-	                      color: "#fff",
+	                      color: paymentState.color,
 	                      width: "fit-content",
 	                    }}
 	                  >
@@ -124,7 +128,7 @@ export default function OrderTable({
                   onClick={(event) => {
                     event.stopPropagation();
                   }}
-                  style={selectStyle}
+                  style={{ ...selectStyle, padding: "6px 28px 6px 12px", minWidth: 140, borderRadius: 8, fontSize: 13 }}
                 >
                   {ORDER_STEPS.map((step) => (
                     <option key={step} value={step}>
@@ -141,7 +145,7 @@ export default function OrderTable({
                   onClickCapture={(event) => {
                     event.stopPropagation();
                   }}
-                  style={smallButtonStyle}
+                  style={{ ...smallButtonStyle, background: "rgba(255,255,255,0.06)", color: "var(--text-secondary)", boxShadow: "none", border: "1px solid rgba(255,255,255,0.1)" }}
                 >
                   Simulate
                 </button>

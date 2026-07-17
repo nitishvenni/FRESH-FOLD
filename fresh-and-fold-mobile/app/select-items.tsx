@@ -8,51 +8,9 @@ import Card from "../components/Card";
 import ItemCard from "../components/ItemCard";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
+import { clothingItems, homeItems, initialItems, ItemKey, ItemState } from "../utils/bookingData";
 
-type ItemKey =
-  | "shirt"
-  | "tshirt"
-  | "jeans"
-  | "trousers"
-  | "dress"
-  | "jacket"
-  | "sweater"
-  | "bedsheet"
-  | "pillowcover"
-  | "towel"
-  | "curtain"
-  | "blanket";
 
-type ItemState = Record<ItemKey, number>;
-
-const clothingItems: Array<{
-  key: ItemKey;
-  name: string;
-}> = [
-  { key: "shirt", name: "Shirt" },
-  { key: "tshirt", name: "T-Shirt" },
-  { key: "jeans", name: "Jeans" },
-  { key: "trousers", name: "Trousers" },
-  { key: "dress", name: "Dress" },
-  { key: "jacket", name: "Jacket" },
-  { key: "sweater", name: "Sweater" },
-];
-
-const homeItems: Array<{
-  key: ItemKey;
-  name: string;
-}> = [
-  { key: "bedsheet", name: "Bedsheet" },
-  { key: "pillowcover", name: "Pillow Cover" },
-  { key: "towel", name: "Towel" },
-  { key: "curtain", name: "Curtain" },
-  { key: "blanket", name: "Blanket" },
-];
-
-const initialItems = [...clothingItems, ...homeItems].reduce((acc, item) => {
-  acc[item.key] = 0;
-  return acc;
-}, {} as ItemState);
 
 export default function SelectItems() {
   const router = useRouter();

@@ -20,13 +20,5 @@ const productionApiBaseUrl = "https://fresh-and-fold-backend.onrender.com";
 const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "")
   .trim()
   .replace(/\/$/, "");
-const isHostedBrowser =
-  typeof window !== "undefined" &&
-  window.location.hostname !== "localhost" &&
-  window.location.hostname !== "127.0.0.1";
-const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredApiBaseUrl);
 
-export const API_BASE_URL =
-  isHostedBrowser && isLocalApiUrl
-    ? productionApiBaseUrl
-    : configuredApiBaseUrl || productionApiBaseUrl;
+export const API_BASE_URL = configuredApiBaseUrl || productionApiBaseUrl;

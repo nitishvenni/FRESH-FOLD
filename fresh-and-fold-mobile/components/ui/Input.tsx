@@ -7,27 +7,48 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import { useAppTheme } from "../../hooks/useAppTheme";
 import { colors, radius, shadow, spacing, typography } from "../../theme/theme";
 
 type InputProps = TextInputProps & {
   containerStyle?: StyleProp<ViewStyle>;
   leading?: ReactNode;
+  variant?: "default" | "glass";
 };
 
 export default function Input({
   containerStyle,
   leading,
   style,
-  placeholderTextColor = "#9CA3AF",
+  placeholderTextColor,
+  variant = "default",
   ...props
 }: InputProps) {
+  const { theme, isDark } = useAppTheme();
+
+  const isGlass = variant === "glass";
+  
+  const defaultPlaceholderColor = isGlass ? theme.textMuted : "#9CA3AF";
+  const finalPlaceholderColor = placeholderTextColor || defaultPlaceholderColor;
+
   return (
-    <View style={[styles.wrapper, containerStyle]}>
+    <View
+      style={[
+        styles.wrapper,
+        isGlass && {
+          backgroundColor: isDark ? "rgba(17,24,39,0.4)" : "rgba(255,255,255,0.7)",
+          borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(255,255,255,0.9)",
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        containerStyle,
+      ]}
+    >
       {leading ? <View style={styles.leading}>{leading}</View> : null}
       <TextInput
         {...props}
-        placeholderTextColor={placeholderTextColor}
-        style={[styles.input, style]}
+        placeholderTextColor={finalPlaceholderColor}
+        style={[styles.input, isGlass && { color: theme.text }, style]}
       />
     </View>
   );

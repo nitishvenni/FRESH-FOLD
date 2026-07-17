@@ -46,8 +46,22 @@ export const parseDismissedTicketState = (
 
 export const mergeConversationMessages = (
   current: SupportChatMessage[],
-  ticketMessages: SupportChatMessage[]
+  ticketMessages: SupportChatMessage[],
+  scope?: {
+    currentTicketId?: string | null;
+    incomingTicketId?: string;
+  }
 ) => {
+  // Ticket history must never be merged into an already-bound different ticket.
+  // Local-only AI messages remain mergeable while a new ticket is being created.
+  if (
+    scope?.currentTicketId &&
+    scope.incomingTicketId &&
+    scope.currentTicketId !== scope.incomingTicketId
+  ) {
+    return current;
+  }
+
   const next = [...current];
   const existingKeys = new Set(
     current.map((message) =>

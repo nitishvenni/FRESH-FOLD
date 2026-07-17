@@ -87,7 +87,7 @@ function RootNavigation() {
 
   const showTabs =
     isLoggedIn &&
-    ["/home", "/order-history", "/support", "/profile"].includes(pathname);
+    ["/home", "/order-history", "/ai-care", "/support", "/profile"].includes(pathname);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
