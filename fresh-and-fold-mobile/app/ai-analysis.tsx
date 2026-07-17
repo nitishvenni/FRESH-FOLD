@@ -1,12 +1,19 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
 import { useAppTheme } from "../hooks/useAppTheme";
-import type { GarmentRecognitionResult, MappedGarmentDetection } from "../types/ai";
+import type { BookingReviewItem, GarmentRecognitionResult } from "../types/ai";
 import { allItems } from "../utils/bookingData";
+import {
+  buildSmartScanBookingPrefill,
+  createBookingReviewItems,
+  removeReviewItem,
+  serializeSmartScanBookingPrefill,
+  setReviewItemQuantity,
+} from "../utils/aiBookingDraft";
 
 const parseResult = (value: string | string[] | undefined): GarmentRecognitionResult | null => {
   if (typeof value !== "string") return null;
@@ -25,19 +32,59 @@ const parseResult = (value: string | string[] | undefined): GarmentRecognitionRe
   }
 };
 
-const catalogName = (detection: MappedGarmentDetection) =>
-  detection.catalogItemId
-    ? allItems.find((item) => item.key === detection.catalogItemId)?.name ?? detection.catalogItemId
-    : null;
-
 export default function AiAnalysisScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
   const params = useLocalSearchParams<{ result?: string }>();
   const result = useMemo(() => parseResult(params.result), [params.result]);
+  const initialReviewItems = useMemo(
+    () => (result ? createBookingReviewItems(result) : []),
+    [result]
+  );
+  const [reviewItems, setReviewItems] = useState<BookingReviewItem[]>(initialReviewItems);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReviewItems(initialReviewItems);
+    setReviewError(null);
+  }, [initialReviewItems]);
+
   const manualBooking = () => router.push("/select-service");
   const scanAgain = () => router.replace("/smart-scan" as never);
+
+  const changeQuantity = (id: string, delta: number) => {
+    setReviewError(null);
+    setReviewItems((current) => {
+      const item = current.find((candidate) => candidate.id === id);
+      if (!item || item.removed || !item.catalogItemId) return current;
+      const nextQuantity = Math.max(1, (item.quantity ?? 0) + delta);
+      return setReviewItemQuantity(current, id, nextQuantity);
+    });
+  };
+
+  const removeFromPrefill = (id: string) => {
+    setReviewError(null);
+    setReviewItems((current) => removeReviewItem(current, id));
+  };
+
+  const continueToBooking = () => {
+    const buildResult = buildSmartScanBookingPrefill(reviewItems);
+    if (buildResult.unresolvedQuantityItemIds.length > 0) {
+      setReviewError("Choose a quantity or remove every mapped garment with an unclear quantity.");
+      return;
+    }
+
+    if (!buildResult.prefill) {
+      manualBooking();
+      return;
+    }
+
+    router.push({
+      pathname: "/select-service",
+      params: { aiPrefill: serializeSmartScanBookingPrefill(buildResult.prefill) },
+    });
+  };
 
   const title =
     result?.status === "no_match"
@@ -72,21 +119,48 @@ export default function AiAnalysisScreen() {
               </Card>
             ) : null}
 
-            {result.detections.map((detection, index) => {
-              const mappedName = catalogName(detection);
-              const needsAttention = !mappedName || detection.quantity === null || result.status !== "complete";
+            {reviewItems.map((item) => {
+              const mappedName = item.catalogItemId
+                ? allItems.find((catalogItem) => catalogItem.key === item.catalogItemId)?.name ?? item.catalogItemId
+                : null;
+              const needsAttention = !mappedName || item.quantity === null || result.status !== "complete";
               return (
-                <Card key={`${detection.detectedLabel}-${index}`} style={[styles.detectionCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                <Card key={item.id} style={[styles.detectionCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
                   <View style={styles.detectionHeader}>
-                    <Text style={[styles.detectedLabel, { color: theme.text }]}>{detection.detectedLabel}</Text>
+                    <Text style={[styles.detectedLabel, { color: theme.text }]}>{item.detectedLabel}</Text>
                     {needsAttention ? <Text style={[styles.attention, { color: theme.warning }]}>Needs review</Text> : null}
                   </View>
-                  <Text style={[styles.detail, { color: theme.textMuted }]}>Quantity: {detection.quantity ?? "Unclear"}</Text>
-                  <Text style={[styles.detail, { color: theme.textMuted }]}>Confidence: {Math.round(detection.confidence * 100)}% (advisory)</Text>
+                  <Text style={[styles.detail, { color: theme.textMuted }]}>Confidence: {Math.round(item.confidence * 100)}% (advisory)</Text>
                   {mappedName ? (
-                    <Text style={[styles.mapped, { color: theme.success }]}>Catalog match: {mappedName}</Text>
+                    <>
+                      <Text style={[styles.mapped, { color: theme.success }]}>Catalog match: {mappedName}</Text>
+                      {item.removed ? (
+                        <Text style={[styles.unmapped, { color: theme.textMuted }]}>Removed from booking prefill</Text>
+                      ) : (
+                        <View style={styles.reviewControls}>
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            onPress={() => changeQuantity(item.id, -1)}
+                            style={[styles.quantityButton, { borderColor: theme.border }]}
+                          >
+                            <MaterialIcons name="remove" size={18} color={theme.text} />
+                          </TouchableOpacity>
+                          <Text style={[styles.reviewQuantity, { color: theme.text }]}>Quantity: {item.quantity ?? "Choose"}</Text>
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            onPress={() => changeQuantity(item.id, 1)}
+                            style={[styles.quantityButton, { borderColor: theme.border }]}
+                          >
+                            <MaterialIcons name="add" size={18} color={theme.text} />
+                          </TouchableOpacity>
+                          <TouchableOpacity accessibilityRole="button" onPress={() => removeFromPrefill(item.id)}>
+                            <Text style={[styles.removeText, { color: theme.warning }]}>Remove</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
                   ) : (
-                    <Text style={[styles.unmapped, { color: theme.warning }]}>Not in the current catalog</Text>
+                    <Text style={[styles.unmapped, { color: theme.warning }]}>Not in the current catalog and cannot be added automatically</Text>
                   )}
                 </Card>
               );
@@ -98,8 +172,10 @@ export default function AiAnalysisScreen() {
           </>
         )}
 
-        <TouchableOpacity accessibilityRole="button" style={[styles.primaryButton, { backgroundColor: theme.primary }]} onPress={manualBooking}>
-          <Text style={styles.primaryButtonText}>Continue with Manual Booking</Text>
+        {reviewError ? <Text style={[styles.reviewError, { color: theme.warning }]}>{reviewError}</Text> : null}
+
+        <TouchableOpacity accessibilityRole="button" style={[styles.primaryButton, { backgroundColor: theme.primary }]} onPress={continueToBooking}>
+          <Text style={styles.primaryButtonText}>Review and Continue to Booking</Text>
         </TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" style={[styles.secondaryButton, { borderColor: theme.border }]} onPress={scanAgain}>
           <Text style={[styles.secondaryButtonText, { color: theme.text }]}>Scan Again</Text>
@@ -126,7 +202,12 @@ const styles = StyleSheet.create({
   detail: { marginTop: 7, fontSize: 14 },
   mapped: { marginTop: 10, fontSize: 14, fontWeight: "700" },
   unmapped: { marginTop: 10, fontSize: 14, fontWeight: "700" },
+  reviewControls: { marginTop: 12, flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 },
+  quantityButton: { width: 34, height: 34, borderWidth: 1, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  reviewQuantity: { fontSize: 14, fontWeight: "700" },
+  removeText: { fontSize: 13, fontWeight: "700" },
   warning: { marginTop: 10, fontSize: 14, lineHeight: 20 },
+  reviewError: { marginTop: 20, fontSize: 14, lineHeight: 20, textAlign: "center" },
   primaryButton: { minHeight: 54, marginTop: 28, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   secondaryButton: { minHeight: 52, marginTop: 12, borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center" },

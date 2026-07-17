@@ -4,6 +4,12 @@ import { mapDetectedGarment, normalizeGarmentLabel } from "../../src/ai/catalog"
 describe("garment catalog mapping", () => {
   it.each([
     ["T-Shirt", "tshirt"],
+    ["Maroon T-Shirt", "tshirt"],
+    ["folded t-shirt", "tshirt"],
+    ["navy folded t-shirt", "tshirt"],
+    ["Black Folded Trousers", "trousers"],
+    ["blue jeans", "jeans"],
+    ["white shirt", "shirt"],
     ["button-down shirt", "shirt"],
     ["Pillow Case", "pillowcover"],
     ["Comforter", "blanket"],
@@ -16,6 +22,19 @@ describe("garment catalog mapping", () => {
       mappingStatus: "mapped",
     });
   });
+
+  it.each(["silk saree", "saree", "suit", "black suit", "shoes"])(
+    "keeps unsupported label %s unmapped",
+    (detectedLabel) => {
+      const mapped = mapDetectedGarment({ detectedLabel, quantity: 1, confidence: 0.9 });
+
+      expect(mapped).toMatchObject({
+        detectedLabel,
+        catalogItemId: null,
+        mappingStatus: "unmapped",
+      });
+    }
+  );
 
   it("preserves unsupported labels without assigning a catalog ID", () => {
     const mapped = mapDetectedGarment({

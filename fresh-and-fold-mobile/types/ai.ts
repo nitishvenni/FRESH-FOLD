@@ -47,6 +47,24 @@ export type BookingDraft = {
   unresolvedFields: string[];
 };
 
+/** Local-only review state; it is never sent to pricing, payment, or order APIs. */
+export type BookingReviewItem = {
+  id: string;
+  detectedLabel: string;
+  catalogItemId: ItemKey | null;
+  mappingStatus: "mapped" | "unmapped";
+  quantity: number | null;
+  confidence: number;
+  removed: boolean;
+};
+
+/** Compact, transient route state for the existing /select-service screen. */
+export type SmartScanBookingPrefill = {
+  version: 1;
+  source: "smart_scan";
+  items: Partial<Record<ItemKey, number>>;
+};
+
 export type GarmentRecognitionResult = {
   status: AiAnalysisStatus;
   warnings: string[];

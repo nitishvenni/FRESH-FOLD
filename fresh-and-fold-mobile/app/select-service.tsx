@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CategoryChips, { Category } from "../components/CategoryChips";
@@ -10,6 +10,7 @@ import ItemCard from "../components/ItemCard";
 import ServiceModeSelector from "../components/ServiceModeSelector";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { allItems, clothingItems, homeItems, initialItems, ItemKey } from "../utils/bookingData";
+import { hydrateSmartScanBookingPrefill, shouldApplySmartScanPrefill } from "../utils/aiBookingDraft";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
 
@@ -35,6 +36,7 @@ const SERVICE_OPTIONS = [
 
 export default function SelectService() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ aiPrefill?: string }>();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
 
@@ -42,6 +44,25 @@ export default function SelectService() {
   const [selectedType, setSelectedType] = useState<ServiceType>("wash");
   const [selectedCategory, setSelectedCategory] = useState<Category>("all");
   const [items, setItems] = useState(initialItems);
+  const appliedPrefillRouteValue = useRef<string | null>(null);
+  const hydratedPrefill = useMemo(
+    () => hydrateSmartScanBookingPrefill(params.aiPrefill),
+    [params.aiPrefill]
+  );
+
+  useEffect(() => {
+    if (
+      hydratedPrefill &&
+      shouldApplySmartScanPrefill(
+        appliedPrefillRouteValue.current,
+        params.aiPrefill,
+        hydratedPrefill
+      )
+    ) {
+      setItems(hydratedPrefill);
+      appliedPrefillRouteValue.current = params.aiPrefill;
+    }
+  }, [hydratedPrefill, params.aiPrefill]);
 
   // Compute downstream service identifier based on speed toggle to respect backend contract.
   const downstreamService = selectedSpeed === "express" ? "express" : selectedType;

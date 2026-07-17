@@ -56,12 +56,56 @@ const aliasIndex = new Map<string, CatalogItemId>(
 );
 
 /**
- * The only AI-layer function that assigns catalogItemId. It uses exact,
- * normalized aliases and keeps an unsupported model label intact for review.
+ * Cosmetic/presentation prefixes that do not change a garment's catalog type.
+ * This allow-list is deliberately narrow: material and garment terms are never
+ * removed, and the remaining candidate must still exactly match a catalog alias.
+ */
+const leadingNonSemanticModifiers = new Set([
+  "folded",
+  "black",
+  "white",
+  "blue",
+  "red",
+  "green",
+  "yellow",
+  "grey",
+  "gray",
+  "brown",
+  "beige",
+  "navy",
+  "maroon",
+  "pink",
+  "purple",
+  "orange",
+]);
+
+const withoutLeadingNonSemanticModifiers = (normalizedLabel: string): string => {
+  const tokens = normalizedLabel.split(" ");
+  let firstGarmentToken = 0;
+
+  while (
+    firstGarmentToken < tokens.length &&
+    leadingNonSemanticModifiers.has(tokens[firstGarmentToken])
+  ) {
+    firstGarmentToken += 1;
+  }
+
+  return tokens.slice(firstGarmentToken).join(" ");
+};
+
+/**
+ * The only AI-layer function that assigns catalogItemId. It first uses an
+ * exact normalized alias, then retries only after removing allow-listed leading
+ * cosmetic/presentation modifiers. It never uses fuzzy or semantic matching.
  */
 export const mapDetectedGarment = (detection: DetectedGarment): MappedGarmentDetection => {
   const normalizedLabel = normalizeGarmentLabel(detection.detectedLabel);
-  const catalogItemId = aliasIndex.get(normalizedLabel) ?? null;
+  const exactCatalogItemId = aliasIndex.get(normalizedLabel);
+  const modifierStrippedCandidate = withoutLeadingNonSemanticModifiers(normalizedLabel);
+  const catalogItemId =
+    exactCatalogItemId ??
+    (modifierStrippedCandidate ? aliasIndex.get(modifierStrippedCandidate) : undefined) ??
+    null;
 
   return MappedGarmentDetectionSchema.parse({
     ...detection,

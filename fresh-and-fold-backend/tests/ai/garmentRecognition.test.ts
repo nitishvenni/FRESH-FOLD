@@ -46,7 +46,10 @@ describe("garment recognition endpoint", () => {
   it("maps supported garments and never adds price, weight, booking, order, or payment data", async () => {
     const provider = providerWithOutput({
       status: "complete",
-      detections: [{ detectedLabel: "T-Shirt", quantity: 2, confidence: 0.93 }],
+      detections: [
+        { detectedLabel: "Maroon T-Shirt", quantity: 2, confidence: 0.93 },
+        { detectedLabel: "Black Folded Trousers", quantity: 1, confidence: 0.92 },
+      ],
       warnings: [],
     });
     const response = await postImage(createGarmentApp(provider)).expect(200);
@@ -54,7 +57,20 @@ describe("garment recognition endpoint", () => {
     expect(response.body).toMatchObject({
       status: "complete",
       requiresUserReview: true,
-      detections: [{ catalogItemId: "tshirt", mappingStatus: "mapped", quantity: 2 }],
+      detections: [
+        {
+          detectedLabel: "Maroon T-Shirt",
+          catalogItemId: "tshirt",
+          mappingStatus: "mapped",
+          quantity: 2,
+        },
+        {
+          detectedLabel: "Black Folded Trousers",
+          catalogItemId: "trousers",
+          mappingStatus: "mapped",
+          quantity: 1,
+        },
+      ],
     });
     expect(response.body).not.toHaveProperty("price");
     expect(response.body).not.toHaveProperty("weight");

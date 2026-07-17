@@ -1,16 +1,22 @@
-export type ItemKey =
-  | "shirt"
-  | "tshirt"
-  | "jeans"
-  | "trousers"
-  | "dress"
-  | "jacket"
-  | "sweater"
-  | "bedsheet"
-  | "pillowcover"
-  | "towel"
-  | "curtain"
-  | "blanket";
+export const itemKeys = [
+  "shirt",
+  "tshirt",
+  "jeans",
+  "trousers",
+  "dress",
+  "jacket",
+  "sweater",
+  "bedsheet",
+  "pillowcover",
+  "towel",
+  "curtain",
+  "blanket",
+] as const;
+
+export type ItemKey = (typeof itemKeys)[number];
+
+export const isItemKey = (value: unknown): value is ItemKey =>
+  typeof value === "string" && (itemKeys as readonly string[]).includes(value);
 
 export type ItemState = Record<ItemKey, number>;
 

@@ -11,7 +11,9 @@ garment result → user review/edit → validated BookingDraft
                → /select-service prefill → existing scheduling/address/payment flow
 ```
 
-The booking draft is transient UI state or compact route state. It contains no final price, payment token, or order ID. The user still sees and can change the regular service/item controls. Existing `/orders/preview` recomputes the price after review.
+The booking draft is transient UI state. The route payload is a compact, validated prefill containing only `{ version: 1, source: "smart_scan", items }`, where `items` has only reviewed supported catalog IDs and positive integer quantities. It contains no final price, payment token, order ID, provider data, confidence, warnings, or image data. The user still sees and can change the regular service/item controls. Existing `/orders/preview` recomputes the price after review.
+
+Phase C introduces no AI endpoint and makes no provider call. It consumes the already validated Phase B garment-recognition result and converges into the existing booking flow.
 
 ## Dependencies
 
@@ -37,9 +39,9 @@ Modify:
 
 1. Display every detected item, its mapping status, quantity, confidence, and any warning before the Continue action.
 2. Permit the user to remove, correct, or manually add only currently supported catalog items.
-3. Convert the reviewed selection into a validated `BookingDraft` using known catalog IDs only.
-4. Pass a compact validated prefill into `/select-service`; never pass AI-generated price data.
-5. Update `/select-service` to apply prefill safely while preserving all normal manual controls and price calculation.
+3. Convert the reviewed selection into a validated `BookingDraft` using known catalog IDs only. A mapped detection with `quantity: null` must be corrected to a positive integer or removed before it can prefill.
+4. Aggregate duplicate reviewed catalog items deterministically and pass only a compact validated prefill into `/select-service`; never pass AI-generated price data, service, confidence, warnings, or raw recognition data.
+5. Update `/select-service` to validate the entire prefill before applying it. Missing, malformed, tampered, unsupported-version, unknown-key, or invalid-quantity input must fall back to the normal empty manual state without partial hydration or reset of later user edits.
 6. Route all missing information through the existing scheduler, address, summary, payment, confirmation, and tracking screens.
 7. Preserve manual booking as an explicit alternative.
 
@@ -54,8 +56,9 @@ Modify:
 
 ## Testing requirements
 
-- Draft-to-prefill tests for all supported catalog IDs.
-- Tests rejecting arbitrary/malformed route prefill and ensuring fallback to normal empty selection.
+- Draft-to-prefill tests for all supported catalog IDs, duplicate aggregation, unmapped exclusion, corrected quantities, removals, and empty reviewed selections.
+- Tests rejecting arbitrary/malformed route prefill, injected price/service/provider fields, unknown catalog keys, invalid quantities, and unsupported versions, while ensuring fallback to normal empty selection.
+- Tests that valid hydration occurs once and does not reset later manual edits.
 - Regression checks for the normal manual booking flow and server price preview.
 - Manual end-to-end test from a scan result through a paid/mock payment and created order.
 
