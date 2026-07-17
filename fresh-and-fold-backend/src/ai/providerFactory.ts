@@ -1,10 +1,16 @@
 import { AiConfig, getAiConfig } from "./config";
 import { AiError } from "./errors";
 import { GeminiInteractionsProvider } from "./geminiProvider";
-import { AiProvider, OpenAiResponsesProvider, StructuredAiRequest } from "./provider";
+import { AiProvider, AiProviderDiagnosticContext, OpenAiResponsesProvider, StructuredAiRequest } from "./provider";
 import { z } from "zod";
 
 class NotConfiguredAiProvider implements AiProvider {
+  constructor(private readonly selectedProvider: string) {}
+
+  getDiagnosticContext(): AiProviderDiagnosticContext {
+    return { provider: this.selectedProvider };
+  }
+
   async parse<TSchema extends z.ZodType>(
     _request: StructuredAiRequest<TSchema>
   ): Promise<z.output<TSchema>> {
@@ -20,6 +26,6 @@ export const createAiProvider = (config: AiConfig = getAiConfig()): AiProvider =
     case "gemini":
       return new GeminiInteractionsProvider(config.gemini, config.timeoutMs);
     default:
-      return new NotConfiguredAiProvider();
+      return new NotConfiguredAiProvider(config.provider);
   }
 };

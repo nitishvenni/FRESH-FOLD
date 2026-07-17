@@ -3,6 +3,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import type { ResponseInput } from "openai/resources/responses/responses";
 import { z } from "zod";
 import { AiModelModality, AiProviderConfig, getAiConfig, requireAiModel } from "./config";
+import { logAiDiagnostic } from "./diagnostics";
 import { AiError } from "./errors";
 import type { AiImageInput } from "./imageInput";
 
@@ -19,6 +20,8 @@ export type OpenAiResponsesClient = {
 };
 
 export type StructuredAiRequest<TSchema extends AnySchema> = {
+  /** Internal correlation ID only; it is not sent to the AI provider. */
+  requestId?: string;
   modality: AiModelModality;
   instructions: string;
   input: {
@@ -29,8 +32,14 @@ export type StructuredAiRequest<TSchema extends AnySchema> = {
   schemaName: string;
 };
 
+export type AiProviderDiagnosticContext = {
+  provider: string;
+  model?: string;
+};
+
 export interface AiProvider {
   parse<TSchema extends AnySchema>(request: StructuredAiRequest<TSchema>): Promise<z.output<TSchema>>;
+  getDiagnosticContext?(modality: AiModelModality): AiProviderDiagnosticContext;
 }
 
 const createOpenAiClient = (apiKey: string, timeoutMs: number): OpenAiResponsesClient =>
@@ -75,6 +84,13 @@ export class OpenAiResponsesProvider implements AiProvider {
     this.client = client;
   }
 
+  getDiagnosticContext(modality: AiModelModality): AiProviderDiagnosticContext {
+    return {
+      provider: "openai",
+      ...(modality === "vision" ? { model: this.config.visionModel } : { model: this.config.textModel }),
+    };
+  }
+
   async parse<TSchema extends AnySchema>(
     request: StructuredAiRequest<TSchema>
   ): Promise<z.output<TSchema>> {
@@ -95,7 +111,26 @@ export class OpenAiResponsesProvider implements AiProvider {
       const parsed = request.schema.safeParse(response.output_parsed);
 
       if (!parsed.success) {
+        if (request.requestId) {
+          logAiDiagnostic({
+            requestId: request.requestId,
+            stage: "provider_output_validation",
+            provider: "openai",
+            model,
+            validationCategory: "schema_failed",
+          });
+        }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
+      }
+
+      if (request.requestId) {
+        logAiDiagnostic({
+          requestId: request.requestId,
+          stage: "provider_output_validation",
+          provider: "openai",
+          model,
+          validationCategory: "success",
+        });
       }
 
       return parsed.data;

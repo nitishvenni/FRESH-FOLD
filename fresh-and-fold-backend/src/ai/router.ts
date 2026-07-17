@@ -1,6 +1,7 @@
 import { RequestHandler, Router } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { createRateLimit, RateLimitOptions } from "../middleware/rateLimit";
+import { logAiDiagnostic } from "./diagnostics";
 import { aiErrorHandler, attachAiRequestId } from "./errors";
 
 export type AiRateLimitOptions = Omit<RateLimitOptions, "namespace" | "error"> & {
@@ -65,6 +66,14 @@ export const createAiRouter = ({ rateLimit, registerRoutes }: AiRouterOptions): 
   const router = Router();
   router.use(attachAiRequestId);
   router.use(authMiddleware);
+  router.use((_req, res, next) => {
+    logAiDiagnostic({
+      requestId: res.locals.aiRequestId,
+      stage: "ai_route_reached",
+      authenticated: true,
+    });
+    next();
+  });
   router.use(rateLimit);
   registerRoutes?.(router);
   router.use(aiErrorHandler);

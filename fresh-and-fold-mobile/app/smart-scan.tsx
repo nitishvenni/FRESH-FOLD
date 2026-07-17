@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
 import { AiServiceError, analyzeGarments } from "../services/aiService";
+import { AiDevelopmentDiagnostic, toAiDevelopmentDiagnostic } from "../services/aiErrors";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { selectGarmentImage } from "../utils/aiImage";
 
@@ -20,7 +21,10 @@ type ScanError = {
   title: string;
   message: string;
   retryable: boolean;
+  diagnostic?: AiDevelopmentDiagnostic;
 };
+
+const isDevelopmentBuild = typeof __DEV__ !== "undefined" && __DEV__;
 
 const errorFrom = (error: unknown): ScanError => {
   if (error instanceof AiServiceError) {
@@ -36,6 +40,7 @@ const errorFrom = (error: unknown): ScanError => {
       title: "Scan could not finish",
       message: error.message,
       retryable: error.retryable,
+      ...(isDevelopmentBuild ? { diagnostic: toAiDevelopmentDiagnostic(error) } : {}),
     };
   }
 
@@ -154,6 +159,13 @@ export default function SmartScanScreen() {
             <MaterialIcons name="info-outline" size={22} color={theme.warning} />
             <Text style={[styles.errorTitle, { color: theme.text }]}>{error.title}</Text>
             <Text style={[styles.errorCopy, { color: theme.textMuted }]}>{error.message}</Text>
+            {isDevelopmentBuild && error.diagnostic ? (
+              <Text style={[styles.diagnosticCopy, { color: theme.textMuted }]}>
+                Code: {error.diagnostic.code}
+                {typeof error.diagnostic.status === "number" ? ` • HTTP ${error.diagnostic.status}` : ""}
+                {error.diagnostic.requestId ? ` • Request: ${error.diagnostic.requestId}` : ""}
+              </Text>
+            ) : null}
             {error.retryable ? (
               <TouchableOpacity accessibilityRole="button" style={[styles.secondaryButton, { borderColor: theme.border }]} onPress={() => setError(null)}>
                 <Text style={[styles.secondaryButtonText, { color: theme.text }]}>Try another scan</Text>
@@ -191,6 +203,7 @@ const styles = StyleSheet.create({
   errorCard: { marginTop: 22, alignItems: "center" },
   errorTitle: { marginTop: 9, fontSize: 16, fontWeight: "700", textAlign: "center" },
   errorCopy: { marginTop: 6, fontSize: 14, lineHeight: 20, textAlign: "center" },
+  diagnosticCopy: { marginTop: 8, fontSize: 12, lineHeight: 18, textAlign: "center" },
   manualLink: { alignSelf: "center", minHeight: 48, justifyContent: "center", marginTop: 22 },
   manualLinkText: { fontSize: 15, fontWeight: "700" },
 });

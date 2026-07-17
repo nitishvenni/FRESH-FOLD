@@ -1,62 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../constants/api";
 import type {
-  AiErrorCode,
-  AiErrorResponse,
   GarmentRecognitionResult,
 } from "../types/ai";
+import { AiServiceError, parseAiErrorResponse } from "./aiErrors";
 
-const AI_ERROR_CODES: readonly AiErrorCode[] = [
-  "AI_NOT_CONFIGURED",
-  "AI_RATE_LIMITED",
-  "AI_INVALID_IMAGE",
-  "AI_IMAGE_TOO_LARGE",
-  "AI_UNSUPPORTED_IMAGE",
-  "AI_TIMEOUT",
-  "AI_PROVIDER_UNAVAILABLE",
-  "AI_INVALID_PROVIDER_RESPONSE",
-];
-
-const isAiErrorCode = (value: unknown): value is AiErrorCode =>
-  typeof value === "string" && AI_ERROR_CODES.includes(value as AiErrorCode);
-
-export class AiServiceError extends Error {
-  readonly code: AiErrorCode | "AI_REQUEST_FAILED";
-  readonly retryable: boolean;
-  readonly requestId?: string;
-
-  constructor(
-    message: string,
-    options: {
-      code: AiErrorCode | "AI_REQUEST_FAILED";
-      retryable: boolean;
-      requestId?: string;
-    }
-  ) {
-    super(message);
-    this.name = "AiServiceError";
-    this.code = options.code;
-    this.retryable = options.retryable;
-    this.requestId = options.requestId;
-  }
-}
-
-const parseAiError = (payload: unknown, fallbackRequestId?: string): AiServiceError => {
-  const body = (payload || {}) as Partial<AiErrorResponse>;
-  if (isAiErrorCode(body.code) && typeof body.message === "string") {
-    return new AiServiceError(body.message, {
-      code: body.code,
-      retryable: body.retryable === true,
-      requestId: typeof body.requestId === "string" ? body.requestId : fallbackRequestId,
-    });
-  }
-
-  return new AiServiceError("AI request failed. Please try again.", {
-    code: "AI_REQUEST_FAILED",
-    retryable: true,
-    requestId: fallbackRequestId,
-  });
-};
+export { AiServiceError } from "./aiErrors";
 
 const getAuthToken = async () =>
   String((await AsyncStorage.getItem("token")) || "")
@@ -81,7 +30,10 @@ export const aiJsonRequest = async <T>(endpoint: string, body: unknown): Promise
 
   const payload = (await response.json().catch(() => ({}))) as unknown;
   if (!response.ok) {
-    throw parseAiError(payload, response.headers.get("x-request-id") || undefined);
+    throw parseAiErrorResponse(payload, {
+      status: response.status,
+      requestId: response.headers.get("x-request-id") || undefined,
+    });
   }
 
   return payload as T;
@@ -118,7 +70,10 @@ export const analyzeGarments = async (
     const payload = (await response.json().catch(() => ({}))) as unknown;
 
     if (!response.ok) {
-      throw parseAiError(payload, response.headers.get("x-request-id") || undefined);
+      throw parseAiErrorResponse(payload, {
+        status: response.status,
+        requestId: response.headers.get("x-request-id") || undefined,
+      });
     }
 
     return payload as GarmentRecognitionResult;

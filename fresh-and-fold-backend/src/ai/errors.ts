@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { ErrorRequestHandler, NextFunction, Request, Response } from "express";
 import multer from "multer";
+import { logAiDiagnostic } from "./diagnostics";
 
 export const AI_ERROR_CODES = [
   "AI_NOT_CONFIGURED",
@@ -106,13 +107,29 @@ const statusForAiError = (error: AiError): number => {
  */
 export const aiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof AiError) {
+    logAiDiagnostic({
+      requestId: getAiRequestId(res),
+      stage: "response_normalized_failure",
+      errorCode: error.code,
+    });
     return sendAiError(res, error, statusForAiError(error));
   }
 
   if (error instanceof multer.MulterError) {
     const aiError = fromMulterError(error);
+    logAiDiagnostic({
+      requestId: getAiRequestId(res),
+      stage: "response_normalized_failure",
+      errorCode: aiError.code,
+    });
     return sendAiError(res, aiError, statusForAiError(aiError));
   }
 
-  return sendAiError(res, new AiError("AI_PROVIDER_UNAVAILABLE"), 503);
+  const aiError = new AiError("AI_PROVIDER_UNAVAILABLE");
+  logAiDiagnostic({
+    requestId: getAiRequestId(res),
+    stage: "response_normalized_failure",
+    errorCode: aiError.code,
+  });
+  return sendAiError(res, aiError, 503);
 };

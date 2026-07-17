@@ -1,8 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { AiProviderConfig, getAiConfig, requireAiModel } from "./config";
+import { logAiDiagnostic } from "./diagnostics";
 import { AiError } from "./errors";
-import { AiProvider, StructuredAiRequest } from "./provider";
+import { AiProvider, AiProviderDiagnosticContext, StructuredAiRequest } from "./provider";
 
 type AnySchema = z.ZodType;
 
@@ -43,6 +44,13 @@ export class GeminiInteractionsProvider implements AiProvider {
 
   private readonly timeoutMs: number;
 
+  getDiagnosticContext(modality: "vision" | "text"): AiProviderDiagnosticContext {
+    return {
+      provider: "gemini",
+      ...(modality === "vision" ? { model: this.config.visionModel } : { model: this.config.textModel }),
+    };
+  }
+
   async parse<TSchema extends AnySchema>(
     request: StructuredAiRequest<TSchema>
   ): Promise<z.output<TSchema>> {
@@ -76,6 +84,15 @@ export class GeminiInteractionsProvider implements AiProvider {
       );
 
       if (typeof response.output_text !== "string") {
+        if (request.requestId) {
+          logAiDiagnostic({
+            requestId: request.requestId,
+            stage: "provider_output_validation",
+            provider: "gemini",
+            model,
+            validationCategory: "json_parse_failed",
+          });
+        }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
       }
 
@@ -83,12 +100,40 @@ export class GeminiInteractionsProvider implements AiProvider {
       try {
         output = JSON.parse(response.output_text);
       } catch {
+        if (request.requestId) {
+          logAiDiagnostic({
+            requestId: request.requestId,
+            stage: "provider_output_validation",
+            provider: "gemini",
+            model,
+            validationCategory: "json_parse_failed",
+          });
+        }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
       }
 
       const parsed = request.schema.safeParse(output);
       if (!parsed.success) {
+        if (request.requestId) {
+          logAiDiagnostic({
+            requestId: request.requestId,
+            stage: "provider_output_validation",
+            provider: "gemini",
+            model,
+            validationCategory: "schema_failed",
+          });
+        }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
+      }
+
+      if (request.requestId) {
+        logAiDiagnostic({
+          requestId: request.requestId,
+          stage: "provider_output_validation",
+          provider: "gemini",
+          model,
+          validationCategory: "success",
+        });
       }
 
       return parsed.data;
