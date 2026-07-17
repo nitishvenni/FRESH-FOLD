@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { AiProviderConfig, getAiConfig, requireAiModel } from "./config";
-import { logAiDiagnostic } from "./diagnostics";
+import { logAiDiagnostic, toSafeRawErrorName } from "./diagnostics";
 import { AiError } from "./errors";
 import { AiProvider, AiProviderDiagnosticContext, StructuredAiRequest } from "./provider";
 
@@ -58,8 +58,22 @@ export class GeminiInteractionsProvider implements AiProvider {
     const client = this.client ?? createGeminiClient(this.config.apiKey as string);
     this.client = client;
 
+    const providerStartedAtMs = Date.now();
+    const providerStartedAt = new Date(providerStartedAtMs).toISOString();
+    if (request.requestId) {
+      logAiDiagnostic({
+        requestId: request.requestId,
+        stage: "provider_execution_started",
+        provider: "gemini",
+        model,
+        configuredTimeoutMs: this.timeoutMs,
+        providerStartedAt,
+      });
+    }
+
+    let response: GeminiInteraction;
     try {
-      const response = await client.interactions.create(
+      response = await client.interactions.create(
         {
           model,
           system_instruction: request.instructions,
@@ -82,7 +96,52 @@ export class GeminiInteractionsProvider implements AiProvider {
         },
         { timeout_ms: this.timeoutMs, maxRetries: 0 }
       );
+    } catch (error) {
+      const providerFinishedAtMs = Date.now();
+      const normalizedErrorCode =
+        error instanceof AiError
+          ? error.code
+          : isTimeout(error)
+            ? "AI_TIMEOUT"
+            : "AI_PROVIDER_UNAVAILABLE";
 
+      if (request.requestId) {
+        logAiDiagnostic({
+          requestId: request.requestId,
+          stage: "provider_execution_failed",
+          provider: "gemini",
+          model,
+          configuredTimeoutMs: this.timeoutMs,
+          providerStartedAt,
+          providerFinishedAt: new Date(providerFinishedAtMs).toISOString(),
+          elapsedMs: providerFinishedAtMs - providerStartedAtMs,
+          normalizedErrorCode,
+          ...(toSafeRawErrorName(error) ? { rawErrorName: toSafeRawErrorName(error) } : {}),
+        });
+      }
+
+      if (error instanceof AiError) {
+        throw error;
+      }
+
+      throw new AiError(normalizedErrorCode);
+    }
+
+    if (request.requestId) {
+      const providerFinishedAtMs = Date.now();
+      logAiDiagnostic({
+        requestId: request.requestId,
+        stage: "provider_execution_completed",
+        provider: "gemini",
+        model,
+        configuredTimeoutMs: this.timeoutMs,
+        providerStartedAt,
+        providerFinishedAt: new Date(providerFinishedAtMs).toISOString(),
+        elapsedMs: providerFinishedAtMs - providerStartedAtMs,
+      });
+    }
+
+    try {
       if (typeof response.output_text !== "string") {
         if (request.requestId) {
           logAiDiagnostic({

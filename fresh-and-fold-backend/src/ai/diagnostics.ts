@@ -8,6 +8,9 @@ export type AiDiagnosticStage =
   | "provider_request_started"
   | "provider_request_completed"
   | "provider_request_failed"
+  | "provider_execution_started"
+  | "provider_execution_completed"
+  | "provider_execution_failed"
   | "provider_output_validation"
   | "application_zod_validation"
   | "deterministic_mapping_completed"
@@ -24,8 +27,40 @@ export type AiDiagnosticEvent = {
   imageByteSize?: number;
   provider?: string;
   model?: string;
+  configuredTimeoutMs?: number;
+  providerStartedAt?: string;
+  providerFinishedAt?: string;
+  elapsedMs?: number;
   errorCode?: AiErrorCode;
+  normalizedErrorCode?: AiErrorCode;
+  rawErrorName?: string;
   validationCategory?: AiValidationCategory;
+};
+
+const SAFE_RAW_ERROR_NAMES = new Set([
+  "AbortError",
+  "TimeoutError",
+  "APIConnectionTimeoutError",
+  "APIUserAbortError",
+  "RequestTimeoutError",
+  "RequestAbortedError",
+  "APIConnectionError",
+  "RateLimitError",
+  "InternalServerError",
+  "AuthenticationError",
+  "PermissionDeniedError",
+  "BadRequestError",
+  "NotFoundError",
+  "ConflictError",
+  "UnprocessableEntityError",
+  "APIError",
+  "Error",
+]);
+
+/** Returns only a pre-approved provider error class, never an error message. */
+export const toSafeRawErrorName = (error: unknown): string | undefined => {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_RAW_ERROR_NAMES.has(name) ? name : undefined;
 };
 
 /**
@@ -41,7 +76,15 @@ export const logAiDiagnostic = (event: AiDiagnosticEvent): void => {
     ...(typeof event.imageByteSize === "number" ? { imageByteSize: event.imageByteSize } : {}),
     ...(event.provider ? { provider: event.provider } : {}),
     ...(event.model ? { model: event.model } : {}),
+    ...(typeof event.configuredTimeoutMs === "number" ? { configuredTimeoutMs: event.configuredTimeoutMs } : {}),
+    ...(event.providerStartedAt ? { providerStartedAt: event.providerStartedAt } : {}),
+    ...(event.providerFinishedAt ? { providerFinishedAt: event.providerFinishedAt } : {}),
+    ...(typeof event.elapsedMs === "number" ? { elapsedMs: event.elapsedMs } : {}),
     ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+    ...(event.normalizedErrorCode ? { normalizedErrorCode: event.normalizedErrorCode } : {}),
+    ...(event.rawErrorName && SAFE_RAW_ERROR_NAMES.has(event.rawErrorName)
+      ? { rawErrorName: event.rawErrorName }
+      : {}),
     ...(event.validationCategory ? { validationCategory: event.validationCategory } : {}),
   };
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { mapDetectedGarment } from "../../src/ai/catalog";
 import { GarmentModelOutputSchema } from "../../src/ai/contracts";
@@ -27,7 +27,16 @@ const configuredProvider = (client: GeminiInteractionsClient) =>
     client
   );
 
+const timingEvents = (info: ReturnType<typeof vi.spyOn>) =>
+  info.mock.calls
+    .filter(([prefix]) => prefix === "[ai-diagnostic]")
+    .map(([, event]) => JSON.parse(event as string));
+
 describe("GeminiInteractionsProvider", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("uses Interactions create with inline image input, JSON schema, store false, and Zod validation", async () => {
     const create = vi.fn().mockResolvedValue({ output_text: JSON.stringify({ result: "ok" }) });
     const provider = configuredProvider({ interactions: { create } });
@@ -49,6 +58,42 @@ describe("GeminiInteractionsProvider", () => {
       }),
       { timeout_ms: 12_345, maxRetries: 0 }
     );
+  });
+
+  it("records configured timeout and elapsed time when Gemini completes", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const provider = configuredProvider({
+      interactions: { create: vi.fn().mockResolvedValue({ output_text: JSON.stringify({ result: "ok" }) }) },
+    });
+
+    await expect(provider.parse({ ...providerRequest, requestId: "gemini_timing_success" })).resolves.toEqual({
+      result: "ok",
+    });
+
+    const events = timingEvents(info);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: "gemini_timing_success",
+          stage: "provider_execution_started",
+          provider: "gemini",
+          model: "gemini-vision",
+          configuredTimeoutMs: 12_345,
+          providerStartedAt: expect.any(String),
+        }),
+        expect.objectContaining({
+          requestId: "gemini_timing_success",
+          stage: "provider_execution_completed",
+          provider: "gemini",
+          model: "gemini-vision",
+          configuredTimeoutMs: 12_345,
+          providerStartedAt: expect.any(String),
+          providerFinishedAt: expect.any(String),
+          elapsedMs: expect.any(Number),
+        }),
+      ])
+    );
+    expect(events.some((event) => "rawErrorName" in event)).toBe(false);
   });
 
   it("returns AI_NOT_CONFIGURED before making a request when the selected Gemini config is incomplete", async () => {
@@ -76,24 +121,53 @@ describe("GeminiInteractionsProvider", () => {
   });
 
   it("normalizes a timeout without exposing provider details", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const timeout = new Error("request timed out");
     timeout.name = "TimeoutError";
     const provider = configuredProvider({ interactions: { create: vi.fn().mockRejectedValue(timeout) } });
 
-    await expect(provider.parse(providerRequest)).rejects.toMatchObject<Partial<AiError>>({
+    await expect(provider.parse({ ...providerRequest, requestId: "gemini_timing_timeout" })).rejects.toMatchObject<Partial<AiError>>({
       code: "AI_TIMEOUT",
     });
+
+    expect(timingEvents(info)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: "gemini_timing_timeout",
+          stage: "provider_execution_failed",
+          provider: "gemini",
+          model: "gemini-vision",
+          configuredTimeoutMs: 12_345,
+          providerStartedAt: expect.any(String),
+          providerFinishedAt: expect.any(String),
+          elapsedMs: expect.any(Number),
+          normalizedErrorCode: "AI_TIMEOUT",
+          rawErrorName: "TimeoutError",
+        }),
+      ])
+    );
   });
 
   it("normalizes Gemini quota and availability failures with no fallback", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const quota = Object.assign(new Error("quota exceeded"), { status: 429 });
     const create = vi.fn().mockRejectedValue(quota);
     const provider = configuredProvider({ interactions: { create } });
 
-    await expect(provider.parse(providerRequest)).rejects.toMatchObject<Partial<AiError>>({
+    await expect(provider.parse({ ...providerRequest, requestId: "gemini_timing_failure" })).rejects.toMatchObject<Partial<AiError>>({
       code: "AI_PROVIDER_UNAVAILABLE",
     });
     expect(create).toHaveBeenCalledTimes(1);
+    const failure = timingEvents(info).find(
+      (event) => event.stage === "provider_execution_failed" && event.requestId === "gemini_timing_failure"
+    );
+    expect(failure).toMatchObject({
+      requestId: "gemini_timing_failure",
+      configuredTimeoutMs: 12_345,
+      normalizedErrorCode: "AI_PROVIDER_UNAVAILABLE",
+      rawErrorName: "Error",
+    });
+    expect(JSON.stringify(failure)).not.toContain("quota exceeded");
   });
 
   it("produces the same validated garment contract as OpenAI before deterministic mapping", async () => {
