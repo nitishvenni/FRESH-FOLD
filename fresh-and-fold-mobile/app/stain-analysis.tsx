@@ -8,6 +8,7 @@ import type { StainAnalysisResult, StainType } from "../types/ai";
 
 const validStainTypes = new Set<StainType>([
   "coffee",
+  "tea",
   "blood",
   "oil",
   "ink",
@@ -15,12 +16,15 @@ const validStainTypes = new Set<StainType>([
   "wine",
   "grass",
   "sweat",
+  "tomato_sauce",
+  "makeup",
   "unknown",
 ]);
 
 const stainName = (stain: StainType | null) => {
   if (stain === null) return "No stain detected";
   if (stain === "unknown") return "Unknown stain";
+  if (stain === "tomato_sauce") return "Tomato / food sauce";
   return `${stain[0].toUpperCase()}${stain.slice(1)} stain`;
 };
 
@@ -45,6 +49,17 @@ const parseResult = (value: string | string[] | undefined): StainAnalysisResult 
     const guidance = result.careGuidance;
     const hasValidStain = result.stain === null || validStainTypes.has(result.stain);
     const hasValidConfidence = result.confidence === null || (typeof result.confidence === "number" && result.confidence >= 0 && result.confidence <= 1);
+    const hasValidCandidates =
+      Array.isArray(result.candidates) &&
+      result.candidates.length <= 3 &&
+      result.candidates.every(
+        (candidate) =>
+          candidate &&
+          validStainTypes.has(candidate.stain) &&
+          typeof candidate.confidence === "number" &&
+          candidate.confidence >= 0 &&
+          candidate.confidence <= 1
+      );
     const hasValidGuidance =
       guidance &&
       typeof guidance === "object" &&
@@ -54,11 +69,16 @@ const parseResult = (value: string | string[] | undefined): StainAnalysisResult 
       guidance.safetyNotes.every((note) => typeof note === "string") &&
       ["wash", "dry", "express", null].includes(guidance.serviceRecommendation);
 
-    if (!hasValidStain || !hasValidConfidence || !hasValidGuidance || !Array.isArray(result.warnings)) {
+    if (!hasValidStain || !hasValidConfidence || !hasValidCandidates || !hasValidGuidance || !Array.isArray(result.warnings)) {
       return null;
     }
 
-    if ((result.status === "no_match" && (result.stain !== null || result.confidence !== null)) || (result.stain === null && result.status !== "no_match")) {
+    if (
+      (result.status === "no_match" && (result.stain !== null || result.confidence !== null || result.candidates.length !== 0)) ||
+      (result.stain === null && result.status !== "no_match") ||
+      (result.stain === "unknown" && (result.confidence !== null || result.candidates.length === 1)) ||
+      (result.stain !== null && result.stain !== "unknown" && (result.confidence === null || result.candidates.length !== 0))
+    ) {
       return null;
     }
 
@@ -74,6 +94,7 @@ export default function StainAnalysisScreen() {
   const { theme } = useAppTheme();
   const { result: resultParam } = useLocalSearchParams<{ result?: string }>();
   const result = parseResult(resultParam);
+  const possibleCandidates = result?.stain === "unknown" ? result.candidates : [];
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top + 18 }]}>
@@ -101,8 +122,14 @@ export default function StainAnalysisScreen() {
         ) : (
           <>
             <Card style={[styles.section, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Detected stain</Text>
-              <Text style={[styles.primaryResult, { color: result.stain === null ? theme.success : theme.primary }]}>{stainName(result.stain)}</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>{possibleCandidates.length > 0 ? "Possible stain types" : "Detected stain"}</Text>
+              {possibleCandidates.length > 0 ? (
+                possibleCandidates.map((candidate) => (
+                  <Text key={candidate.stain} style={[styles.candidate, { color: theme.primary }]}>{stainName(candidate.stain)} · {Math.round(candidate.confidence * 100)}% (advisory)</Text>
+                ))
+              ) : (
+                <Text style={[styles.primaryResult, { color: result.stain === null ? theme.success : theme.primary }]}>{stainName(result.stain)}</Text>
+              )}
               {result.confidence !== null ? <Text style={[styles.copy, { color: theme.textMuted }]}>Confidence: {Math.round(result.confidence * 100)}% (advisory)</Text> : null}
               {result.stain === "blood" ? <Text style={[styles.bloodNotice, { color: theme.warning }]}>Possible blood-like stain. This is visual guidance only; use appropriate hygiene precautions.</Text> : null}
             </Card>
@@ -156,6 +183,7 @@ const styles = StyleSheet.create({
   section: { marginTop: 16 },
   sectionTitle: { fontSize: 16, fontWeight: "700" },
   primaryResult: { marginTop: 10, fontSize: 22, fontWeight: "700" },
+  candidate: { marginTop: 10, fontSize: 16, fontWeight: "700" },
   copy: { marginTop: 8, fontSize: 14, lineHeight: 20 },
   guidance: { marginTop: 9, fontSize: 14, lineHeight: 20 },
   note: { marginTop: 8, fontSize: 14, lineHeight: 20 },

@@ -32,11 +32,11 @@ const postImage = (app: express.Express) => request(app).post("/ai/stain/analyze
 describe("stain detection endpoint", () => {
   process.env.JWT_SECRET = "stain-detection-test-secret";
 
-  it.each(["coffee", "blood", "oil", "ink", "mud", "wine", "grass", "sweat", "unknown"] as const)("accepts %s as an approved stain", async (stain) => {
+  it.each(["coffee", "tea", "blood", "oil", "ink", "mud", "wine", "grass", "sweat", "tomato_sauce", "makeup", "unknown"] as const)("accepts %s as an approved stain", async (stain) => {
     const provider = providerWithOutput({
       status: stain === "unknown" ? "partial" : "complete",
       stain,
-      confidence: stain === "unknown" ? 0.31 : 0.82,
+      confidence: stain === "unknown" ? null : 0.82,
       careGuidance: guidance,
       warnings: stain === "unknown" ? ["The visible mark is unclear."] : [],
     });
@@ -48,7 +48,7 @@ describe("stain detection endpoint", () => {
     const provider = providerWithOutput({
       status,
       stain: "unknown",
-      confidence: 0.1,
+      confidence: null,
       careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
       warnings: ["No reliable stain classification is available."],
     });
@@ -56,14 +56,26 @@ describe("stain detection endpoint", () => {
     expect(response.body).toMatchObject({ status, stain: "unknown" });
   });
 
-  it("preserves a low-confidence unknown stain without coercing it", async () => {
+  it("normalizes ambiguous oil and mud candidates without forcing a primary stain", async () => {
     const provider = providerWithOutput({
-      status: "partial", stain: "unknown", confidence: 0.08,
+      status: "partial", stain: "unknown", confidence: null,
+      candidates: [
+        { stain: "mud", confidence: 0.41 },
+        { stain: "oil", confidence: 0.63 },
+        { stain: "oil", confidence: 0.58 },
+      ],
       careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
-      warnings: ["The mark cannot be reliably classified."],
+      warnings: ["The mark cannot be reliably classified as one stain type."],
     });
     const response = await postImage(createStainApp(provider)).expect(200);
-    expect(response.body).toMatchObject({ stain: "unknown", confidence: 0.08 });
+    expect(response.body).toMatchObject({
+      stain: "unknown",
+      confidence: null,
+      candidates: [
+        { stain: "oil", confidence: 0.63 },
+        { stain: "mud", confidence: 0.41 },
+      ],
+    });
   });
 
   it("returns no stain only as no_match with null stain and confidence", async () => {
@@ -85,14 +97,15 @@ describe("stain detection endpoint", () => {
   });
 
   it.each([
-    ["invalid stain", "complete", "rust", 0.8, guidance],
-    ["confidence below zero", "complete", "coffee", -0.1, guidance],
-    ["confidence above one", "complete", "coffee", 1.1, guidance],
-    ["malformed guidance", "complete", "coffee", 0.8, { ...guidance, safetyNotes: "unsafe" }],
-    ["invalid service recommendation", "complete", "coffee", 0.8, { ...guidance, serviceRecommendation: "steam" }],
-    ["inconsistent no_match", "no_match", "coffee", 0.8, guidance],
-  ])("rejects %s from a mocked provider", async (_caseName, status, stain, confidence, careGuidance) => {
-    const response = await postImage(createStainApp(providerWithOutput({ status, stain, confidence, careGuidance, warnings: [] }))).expect(502);
+    ["invalid stain", "complete", "rust", 0.8, []],
+    ["confidence below zero", "complete", "coffee", -0.1, []],
+    ["confidence above one", "complete", "coffee", 1.1, []],
+    ["malformed candidates", "partial", "unknown", null, "not-an-array"],
+    ["unsupported candidate", "partial", "unknown", null, [{ stain: "rust", confidence: 0.6 }, { stain: "oil", confidence: 0.5 }]],
+    ["single ambiguous candidate", "partial", "unknown", null, [{ stain: "oil", confidence: 0.6 }]],
+    ["inconsistent no_match", "no_match", "coffee", 0.8, []],
+  ])("rejects %s from a mocked provider", async (_caseName, status, stain, confidence, candidates) => {
+    const response = await postImage(createStainApp(providerWithOutput({ status, stain, confidence, candidates, warnings: [] }))).expect(502);
     expect(response.body.code).toBe("AI_INVALID_PROVIDER_RESPONSE");
   });
 

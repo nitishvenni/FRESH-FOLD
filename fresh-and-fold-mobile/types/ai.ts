@@ -108,6 +108,7 @@ export type FabricIdentificationResult = {
 
 export type StainType =
   | "coffee"
+  | "tea"
   | "blood"
   | "oil"
   | "ink"
@@ -115,7 +116,14 @@ export type StainType =
   | "wine"
   | "grass"
   | "sweat"
+  | "tomato_sauce"
+  | "makeup"
   | "unknown";
+
+export type StainCandidate = {
+  stain: Exclude<StainType, "unknown">;
+  confidence: number;
+};
 
 /** Advisory only; no stain-care result changes booking or pricing state. */
 export type StainCareGuidance = {
@@ -129,6 +137,7 @@ export type StainAnalysisResult = {
   status: AiAnalysisStatus;
   stain: StainType | null;
   confidence: number | null;
+  candidates: StainCandidate[];
   careGuidance: StainCareGuidance;
   warnings: string[];
   requestId: string;

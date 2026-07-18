@@ -94,6 +94,7 @@ describe("Fabric Identification transport", () => {
         status: "no_match",
         stain: null,
         confidence: null,
+        candidates: [],
         careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
         warnings: [],
         requestId: "stain_request_123",

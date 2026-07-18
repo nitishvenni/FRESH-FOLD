@@ -124,4 +124,19 @@ describe("AI contracts", () => {
       }).success
     ).toBe(false);
   });
+
+  it("accepts ambiguous known candidates without requiring a false primary stain", () => {
+    expect(
+      StainModelOutputSchema.safeParse({
+        status: "partial",
+        stain: "unknown",
+        confidence: null,
+        candidates: [
+          { stain: "coffee", confidence: 0.57 },
+          { stain: "tea", confidence: 0.52 },
+        ],
+        warnings: ["The visible mark has competing plausible causes."],
+      }).success
+    ).toBe(true);
+  });
 });

@@ -58,6 +58,7 @@ export const ServiceIdSchema = z.enum(["wash", "dry", "express"]);
 
 export const StainTypeSchema = z.enum([
   "coffee",
+  "tea",
   "blood",
   "oil",
   "ink",
@@ -65,14 +66,47 @@ export const StainTypeSchema = z.enum([
   "wine",
   "grass",
   "sweat",
+  "tomato_sauce",
+  "makeup",
   "unknown",
 ]);
 
+export const KnownStainTypeSchema = z.enum([
+  "coffee",
+  "tea",
+  "blood",
+  "oil",
+  "ink",
+  "mud",
+  "wine",
+  "grass",
+  "sweat",
+  "tomato_sauce",
+  "makeup",
+]);
+
+export type StainType = z.infer<typeof StainTypeSchema>;
+
+export const StainCandidateSchema = z.object({
+  stain: KnownStainTypeSchema,
+  confidence: ConfidenceSchema,
+});
+
+export type StainCandidate = z.infer<typeof StainCandidateSchema>;
+
 const validateStainSemantics = (
-  value: { status: z.infer<typeof AnalysisStatusSchema>; stain: z.infer<typeof StainTypeSchema> | null; confidence: number | null },
+  value: {
+    status: z.infer<typeof AnalysisStatusSchema>;
+    stain: StainType | null;
+    confidence: number | null;
+    candidates: readonly StainCandidate[];
+  },
   context: z.RefinementCtx
 ) => {
-  if (value.status === "no_match" && (value.stain !== null || value.confidence !== null)) {
+  if (
+    value.status === "no_match" &&
+    (value.stain !== null || value.confidence !== null || value.candidates.length !== 0)
+  ) {
     context.addIssue({
       code: "custom",
       message: "A no_match stain result must have null stain and confidence.",
@@ -95,6 +129,39 @@ const validateStainSemantics = (
       path: ["confidence"],
     });
   }
+
+  const hasKnownPrimaryStain = value.stain !== null && value.stain !== "unknown";
+  if (hasKnownPrimaryStain && (value.confidence === null || value.candidates.length !== 0)) {
+    context.addIssue({
+      code: "custom",
+      message: "A known primary stain requires confidence and cannot include competing candidates.",
+      path: ["confidence"],
+    });
+  }
+
+  if (value.stain === "unknown" && value.confidence !== null) {
+    context.addIssue({
+      code: "custom",
+      message: "An unknown stain cannot have a single primary confidence value.",
+      path: ["confidence"],
+    });
+  }
+
+  if (value.stain === "unknown" && value.candidates.length === 1) {
+    context.addIssue({
+      code: "custom",
+      message: "An ambiguous stain requires at least two plausible candidates.",
+      path: ["candidates"],
+    });
+  }
+
+  if (value.stain === "unknown" && value.candidates.length > 0 && value.status !== "partial") {
+    context.addIssue({
+      code: "custom",
+      message: "Competing stain candidates require a partial result.",
+      path: ["status"],
+    });
+  }
 };
 
 /** Advisory only; never a guarantee of removal, fabric safety, or color safety. */
@@ -113,7 +180,7 @@ export const StainModelOutputSchema = z
     status: AnalysisStatusSchema,
     stain: StainTypeSchema.nullable(),
     confidence: ConfidenceSchema.nullable(),
-    careGuidance: StainCareGuidanceSchema,
+    candidates: z.array(StainCandidateSchema).max(3).default([]),
     warnings: z.array(z.string().trim().min(1).max(240)).max(20),
   })
   .superRefine(validateStainSemantics);
@@ -123,6 +190,7 @@ export type StainModelOutput = z.infer<typeof StainModelOutputSchema>;
 export const StainAnalysisSchema = ReviewedResultSchema.extend({
   stain: StainTypeSchema.nullable(),
   confidence: ConfidenceSchema.nullable(),
+  candidates: z.array(StainCandidateSchema).max(3),
   careGuidance: StainCareGuidanceSchema,
 }).superRefine(validateStainSemantics);
 

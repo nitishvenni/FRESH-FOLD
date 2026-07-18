@@ -1,14 +1,34 @@
 import { NextFunction, Request, Response, Router } from "express";
-import { StainAnalysisSchema, StainModelOutputSchema } from "./contracts";
+import { StainAnalysisSchema, StainCandidate, StainModelOutputSchema } from "./contracts";
 import { logAiDiagnostic, toDiagnosticAiErrorCode } from "./diagnostics";
 import { AiError, getAiRequestId } from "./errors";
 import { aiImageUpload, toAiImageInput, validateAiImage } from "./imageInput";
 import { buildStainDetectionInstructions } from "./prompts";
 import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
+import { getStainCareGuidance } from "./stainGuidance";
 
 const stainInputText =
   "Analyze this single image for visible stains. Return only the requested structured output.";
+
+/** Preserves provider confidence while making ambiguous candidates deterministic. */
+export const normalizeStainCandidates = (
+  candidates: readonly StainCandidate[]
+): StainCandidate[] => {
+  const highestConfidenceByStain = new Map<string, StainCandidate>();
+
+  for (const candidate of candidates) {
+    const existing = highestConfidenceByStain.get(candidate.stain);
+    if (!existing || candidate.confidence > existing.confidence) {
+      highestConfidenceByStain.set(candidate.stain, candidate);
+    }
+  }
+
+  return [...highestConfidenceByStain.values()].sort(
+    (left, right) =>
+      right.confidence - left.confidence || left.stain.localeCompare(right.stain, "en-US")
+  );
+};
 
 /** Registers Phase E's standalone advisory stain-detection capability route. */
 export const registerStainDetectionRoutes = (
@@ -85,8 +105,15 @@ export const registerStainDetectionRoutes = (
           throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
         }
 
+        const normalizedCandidates = normalizeStainCandidates(providerOutput.data.candidates);
         const parsedResult = StainAnalysisSchema.safeParse({
           ...providerOutput.data,
+          candidates: normalizedCandidates,
+          careGuidance: getStainCareGuidance({
+            status: providerOutput.data.status,
+            stain: providerOutput.data.stain,
+            candidates: normalizedCandidates,
+          }),
           requestId,
           requiresUserReview: true,
         });
