@@ -1,7 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { AiProviderConfig, getAiConfig, requireAiModel } from "./config";
-import { logAiDiagnostic, toSafeRawErrorName } from "./diagnostics";
+import {
+  logAiDiagnostic,
+  toSafeAnalysisStatus,
+  toSafeRawErrorName,
+  toSafeZodIssueDetails,
+} from "./diagnostics";
 import { AiError } from "./errors";
 import { AiProvider, AiProviderDiagnosticContext, StructuredAiRequest } from "./provider";
 
@@ -146,10 +151,11 @@ export class GeminiInteractionsProvider implements AiProvider {
         if (request.requestId) {
           logAiDiagnostic({
             requestId: request.requestId,
-            stage: "provider_output_validation",
+            stage: "gemini_json_parse_validation",
             provider: "gemini",
             model,
             validationCategory: "json_parse_failed",
+            normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
           });
         }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
@@ -162,10 +168,11 @@ export class GeminiInteractionsProvider implements AiProvider {
         if (request.requestId) {
           logAiDiagnostic({
             requestId: request.requestId,
-            stage: "provider_output_validation",
+            stage: "gemini_json_parse_validation",
             provider: "gemini",
             model,
             validationCategory: "json_parse_failed",
+            normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
           });
         }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
@@ -176,10 +183,13 @@ export class GeminiInteractionsProvider implements AiProvider {
         if (request.requestId) {
           logAiDiagnostic({
             requestId: request.requestId,
-            stage: "provider_output_validation",
+            stage: "gemini_provider_schema_validation",
             provider: "gemini",
             model,
             validationCategory: "schema_failed",
+            normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
+            ...toSafeZodIssueDetails(parsed.error),
+            ...(toSafeAnalysisStatus(output) ? { status: toSafeAnalysisStatus(output) } : {}),
           });
         }
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
@@ -188,10 +198,18 @@ export class GeminiInteractionsProvider implements AiProvider {
       if (request.requestId) {
         logAiDiagnostic({
           requestId: request.requestId,
-          stage: "provider_output_validation",
+          stage: "gemini_json_parse_validation",
           provider: "gemini",
           model,
           validationCategory: "success",
+        });
+        logAiDiagnostic({
+          requestId: request.requestId,
+          stage: "gemini_provider_schema_validation",
+          provider: "gemini",
+          model,
+          validationCategory: "success",
+          ...(toSafeAnalysisStatus(parsed.data) ? { status: toSafeAnalysisStatus(parsed.data) } : {}),
         });
       }
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { mapDetectedGarment } from "../../src/ai/catalog";
-import { GarmentModelOutputSchema } from "../../src/ai/contracts";
+import { GarmentModelOutputSchema, StainModelOutputSchema } from "../../src/ai/contracts";
 import { AiError } from "../../src/ai/errors";
 import { GeminiInteractionsClient, GeminiInteractionsProvider } from "../../src/ai/geminiProvider";
 import { OpenAiResponsesProvider } from "../../src/ai/provider";
@@ -118,6 +118,42 @@ describe("GeminiInteractionsProvider", () => {
     await expect(provider.parse(providerRequest)).rejects.toMatchObject<Partial<AiError>>({
       code: "AI_INVALID_PROVIDER_RESPONSE",
     });
+  });
+
+  it("records only safe Zod paths and codes when Gemini structured output fails validation", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const provider = configuredProvider({
+      interactions: {
+        create: vi.fn().mockResolvedValue({
+          output_text: JSON.stringify({
+            status: "partial",
+            stain: "unknown",
+            confidence: null,
+            candidates: "secret-provider-output",
+            warnings: [],
+          }),
+        }),
+      },
+    });
+
+    await expect(
+      provider.parse({ ...providerRequest, requestId: "gemini_schema_diagnostics", schema: StainModelOutputSchema })
+    ).rejects.toMatchObject<Partial<AiError>>({ code: "AI_INVALID_PROVIDER_RESPONSE" });
+
+    const failure = timingEvents(info).find(
+      (event) =>
+        event.stage === "gemini_provider_schema_validation" &&
+        event.requestId === "gemini_schema_diagnostics"
+    );
+    expect(failure).toMatchObject({
+      requestId: "gemini_schema_diagnostics",
+      stage: "gemini_provider_schema_validation",
+      status: "partial",
+      normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
+      zodIssuePaths: expect.arrayContaining(["candidates"]),
+      zodIssueCodes: expect.arrayContaining(["invalid_type"]),
+    });
+    expect(JSON.stringify(failure)).not.toContain("secret-provider-output");
   });
 
   it("normalizes a timeout without exposing provider details", async () => {

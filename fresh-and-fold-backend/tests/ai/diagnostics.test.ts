@@ -75,4 +75,27 @@ describe("AI pipeline diagnostics", () => {
       normalizedErrorCode: "AI_PROVIDER_UNAVAILABLE",
     });
   });
+
+  it("retains only bounded, non-sensitive Zod diagnostic metadata", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    logAiDiagnostic({
+      requestId: "scan_request_789",
+      stage: "gemini_provider_schema_validation",
+      status: "partial",
+      normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
+      zodIssuePaths: ["candidates.1.stain", "authorization.secret-token"],
+      zodIssueCodes: ["invalid_value", "provider_error_with_secret"],
+    });
+
+    const [, serializedEvent] = info.mock.calls[0];
+    expect(serializedEvent).not.toContain("secret-token");
+    expect(JSON.parse(serializedEvent as string)).toEqual({
+      requestId: "scan_request_789",
+      stage: "gemini_provider_schema_validation",
+      normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
+      status: "partial",
+      zodIssuePaths: ["candidates.1.stain"],
+      zodIssueCodes: ["invalid_value"],
+    });
+  });
 });

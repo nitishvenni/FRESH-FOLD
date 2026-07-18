@@ -1,6 +1,16 @@
 import { NextFunction, Request, Response, Router } from "express";
-import { StainAnalysisSchema, StainCandidate, StainModelOutputSchema } from "./contracts";
-import { logAiDiagnostic, toDiagnosticAiErrorCode } from "./diagnostics";
+import {
+  StainAnalysisSchema,
+  StainCandidate,
+  StainModelOutput,
+  StainModelOutputSchema,
+} from "./contracts";
+import {
+  logAiDiagnostic,
+  toDiagnosticAiErrorCode,
+  toSafeAnalysisStatus,
+  toSafeZodIssueDetails,
+} from "./diagnostics";
 import { AiError, getAiRequestId } from "./errors";
 import { aiImageUpload, toAiImageInput, validateAiImage } from "./imageInput";
 import { buildStainDetectionInstructions } from "./prompts";
@@ -28,6 +38,26 @@ export const normalizeStainCandidates = (
     (left, right) =>
       right.confidence - left.confidence || left.stain.localeCompare(right.stain, "en-US")
   );
+};
+
+/**
+ * Keeps ambiguous output deterministic without promoting a single candidate.
+ * The final response schema still requires zero or at least two candidates for
+ * an unknown stain.
+ */
+export const normalizeStainOutput = (output: StainModelOutput): StainModelOutput => {
+  const candidates = normalizeStainCandidates(output.candidates);
+
+  if (output.stain === "unknown" && candidates.length < 2) {
+    return {
+      ...output,
+      stain: "unknown",
+      confidence: null,
+      candidates: [],
+    };
+  }
+
+  return { ...output, candidates };
 };
 
 /** Registers Phase E's standalone advisory stain-detection capability route. */
@@ -99,20 +129,34 @@ export const registerStainDetectionRoutes = (
         if (!providerOutput.success) {
           logAiDiagnostic({
             requestId,
-            stage: "application_zod_validation",
+            stage: "stain_provider_output_validation",
             validationCategory: "schema_failed",
+            normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
+            ...toSafeZodIssueDetails(providerOutput.error),
+            ...(toSafeAnalysisStatus(output) ? { status: toSafeAnalysisStatus(output) } : {}),
           });
           throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
         }
 
-        const normalizedCandidates = normalizeStainCandidates(providerOutput.data.candidates);
+        const normalizedOutput = normalizeStainOutput(providerOutput.data);
+        logAiDiagnostic({
+          requestId,
+          stage: "stain_provider_output_validation",
+          validationCategory: "success",
+          status: normalizedOutput.status,
+        });
+        logAiDiagnostic({
+          requestId,
+          stage: "stain_candidate_normalization",
+          validationCategory: "success",
+          status: normalizedOutput.status,
+        });
         const parsedResult = StainAnalysisSchema.safeParse({
-          ...providerOutput.data,
-          candidates: normalizedCandidates,
+          ...normalizedOutput,
           careGuidance: getStainCareGuidance({
-            status: providerOutput.data.status,
-            stain: providerOutput.data.stain,
-            candidates: normalizedCandidates,
+            status: normalizedOutput.status,
+            stain: normalizedOutput.stain,
+            candidates: normalizedOutput.candidates,
           }),
           requestId,
           requiresUserReview: true,
@@ -120,16 +164,20 @@ export const registerStainDetectionRoutes = (
         if (!parsedResult.success) {
           logAiDiagnostic({
             requestId,
-            stage: "application_zod_validation",
+            stage: "stain_final_response_validation",
             validationCategory: "schema_failed",
+            normalizedErrorCode: "AI_INVALID_PROVIDER_RESPONSE",
+            ...toSafeZodIssueDetails(parsedResult.error),
+            status: normalizedOutput.status,
           });
           throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
         }
 
         logAiDiagnostic({
           requestId,
-          stage: "application_zod_validation",
+          stage: "stain_final_response_validation",
           validationCategory: "success",
+          status: parsedResult.data.status,
         });
         logAiDiagnostic({ requestId, stage: "response_completed" });
         return res.status(200).json(parsedResult.data);

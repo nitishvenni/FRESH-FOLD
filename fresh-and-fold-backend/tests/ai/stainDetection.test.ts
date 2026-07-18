@@ -78,6 +78,39 @@ describe("stain detection endpoint", () => {
     });
   });
 
+  it("degrades a single ambiguous candidate to an explicit unknown result", async () => {
+    const provider = providerWithOutput({
+      status: "partial", stain: "unknown", confidence: null,
+      candidates: [{ stain: "oil", confidence: 0.63 }],
+      warnings: ["The mark cannot be reliably classified as one stain type."],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({
+      status: "partial",
+      stain: "unknown",
+      confidence: null,
+      candidates: [],
+    });
+  });
+
+  it("degrades duplicate ambiguous candidates that collapse to one distinct stain", async () => {
+    const provider = providerWithOutput({
+      status: "partial", stain: "unknown", confidence: null,
+      candidates: [
+        { stain: "oil", confidence: 0.63 },
+        { stain: "oil", confidence: 0.48 },
+      ],
+      warnings: ["The mark cannot be reliably classified as one stain type."],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({
+      status: "partial",
+      stain: "unknown",
+      confidence: null,
+      candidates: [],
+    });
+  });
+
   it("returns no stain only as no_match with null stain and confidence", async () => {
     const provider = providerWithOutput({
       status: "no_match", stain: null, confidence: null,
@@ -102,7 +135,6 @@ describe("stain detection endpoint", () => {
     ["confidence above one", "complete", "coffee", 1.1, []],
     ["malformed candidates", "partial", "unknown", null, "not-an-array"],
     ["unsupported candidate", "partial", "unknown", null, [{ stain: "rust", confidence: 0.6 }, { stain: "oil", confidence: 0.5 }]],
-    ["single ambiguous candidate", "partial", "unknown", null, [{ stain: "oil", confidence: 0.6 }]],
     ["inconsistent no_match", "no_match", "coffee", 0.8, []],
   ])("rejects %s from a mocked provider", async (_caseName, status, stain, confidence, candidates) => {
     const response = await postImage(createStainApp(providerWithOutput({ status, stain, confidence, candidates, warnings: [] }))).expect(502);

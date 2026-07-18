@@ -3,6 +3,7 @@ import {
   BookingDraftSchema,
   FabricModelOutputSchema,
   GarmentModelOutputSchema,
+  StainAnalysisSchema,
   StainModelOutputSchema,
 } from "../../src/ai/contracts";
 
@@ -138,5 +139,37 @@ describe("AI contracts", () => {
         warnings: ["The visible mark has competing plausible causes."],
       }).success
     ).toBe(true);
+  });
+
+  it("temporarily accepts one unknown candidate for deterministic route normalization", () => {
+    expect(
+      StainModelOutputSchema.safeParse({
+        status: "partial",
+        stain: "unknown",
+        confidence: null,
+        candidates: [{ stain: "oil", confidence: 0.57 }],
+        warnings: ["The visible mark is ambiguous."],
+      }).success
+    ).toBe(true);
+  });
+
+  it("keeps the final stain analysis contract strict for one unknown candidate", () => {
+    expect(
+      StainAnalysisSchema.safeParse({
+        status: "partial",
+        stain: "unknown",
+        confidence: null,
+        candidates: [{ stain: "oil", confidence: 0.57 }],
+        careGuidance: {
+          cleaningRecommendation: null,
+          specialTreatment: null,
+          safetyNotes: [],
+          serviceRecommendation: null,
+        },
+        warnings: ["The visible mark is ambiguous."],
+        requestId: "stain_request_123",
+        requiresUserReview: true,
+      }).success
+    ).toBe(false);
   });
 });

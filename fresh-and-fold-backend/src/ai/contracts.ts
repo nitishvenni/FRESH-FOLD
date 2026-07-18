@@ -101,7 +101,8 @@ const validateStainSemantics = (
     confidence: number | null;
     candidates: readonly StainCandidate[];
   },
-  context: z.RefinementCtx
+  context: z.RefinementCtx,
+  options: { allowSingleUnknownCandidate?: boolean } = {}
 ) => {
   if (
     value.status === "no_match" &&
@@ -147,7 +148,11 @@ const validateStainSemantics = (
     });
   }
 
-  if (value.stain === "unknown" && value.candidates.length === 1) {
+  if (
+    value.stain === "unknown" &&
+    value.candidates.length === 1 &&
+    !options.allowSingleUnknownCandidate
+  ) {
     context.addIssue({
       code: "custom",
       message: "An ambiguous stain requires at least two plausible candidates.",
@@ -183,7 +188,12 @@ export const StainModelOutputSchema = z
     candidates: z.array(StainCandidateSchema).max(3).default([]),
     warnings: z.array(z.string().trim().min(1).max(240)).max(20),
   })
-  .superRefine(validateStainSemantics);
+  // A provider may repeat the same ambiguous candidate. Permit one candidate
+  // at this boundary so route-level deterministic de-duplication can safely
+  // reduce it to an explicit unknown result before final validation.
+  .superRefine((value, context) =>
+    validateStainSemantics(value, context, { allowSingleUnknownCandidate: true })
+  );
 
 export type StainModelOutput = z.infer<typeof StainModelOutputSchema>;
 
