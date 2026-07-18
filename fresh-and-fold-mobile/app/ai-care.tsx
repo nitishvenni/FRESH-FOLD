@@ -33,6 +33,21 @@ export default function AICareScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         accessibilityRole="button"
+        accessibilityLabel="Open Stain Detection"
+        activeOpacity={0.86}
+        style={styles.secondaryCardPressable}
+        onPress={() => router.push("/stain-scan" as never)}
+      >
+        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
+            <MaterialIcons name="search" size={24} color={theme.primary} />
+          </View>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Stain Detection</Text>
+          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo for cautious stain and cleaning guidance.</Text>
+        </Card>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
         accessibilityLabel="Open Fabric Identification"
         activeOpacity={0.86}
         style={styles.secondaryCardPressable}

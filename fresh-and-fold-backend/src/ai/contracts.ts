@@ -49,17 +49,84 @@ export const GarmentAnalysisSchema = ReviewedResultSchema.extend({
   detections: z.array(MappedGarmentDetectionSchema).max(30),
 });
 
-export const StainAnalysisSchema = ReviewedResultSchema.extend({
-  detectedLabel: z.string().trim().min(1).max(120).nullable(),
-  confidence: ConfidenceSchema.nullable(),
-});
-
 export const CareLabelAnalysisSchema = ReviewedResultSchema.extend({
   extractedText: z.string().trim().max(1_000).nullable(),
   confidence: ConfidenceSchema.nullable(),
 });
 
 export const ServiceIdSchema = z.enum(["wash", "dry", "express"]);
+
+export const StainTypeSchema = z.enum([
+  "coffee",
+  "blood",
+  "oil",
+  "ink",
+  "mud",
+  "wine",
+  "grass",
+  "sweat",
+  "unknown",
+]);
+
+const validateStainSemantics = (
+  value: { status: z.infer<typeof AnalysisStatusSchema>; stain: z.infer<typeof StainTypeSchema> | null; confidence: number | null },
+  context: z.RefinementCtx
+) => {
+  if (value.status === "no_match" && (value.stain !== null || value.confidence !== null)) {
+    context.addIssue({
+      code: "custom",
+      message: "A no_match stain result must have null stain and confidence.",
+      path: ["stain"],
+    });
+  }
+
+  if (value.stain === null && value.status !== "no_match") {
+    context.addIssue({
+      code: "custom",
+      message: "Only a no_match result may have a null stain.",
+      path: ["stain"],
+    });
+  }
+
+  if (value.stain === null && value.confidence !== null) {
+    context.addIssue({
+      code: "custom",
+      message: "A null stain must have null confidence.",
+      path: ["confidence"],
+    });
+  }
+};
+
+/** Advisory only; never a guarantee of removal, fabric safety, or color safety. */
+export const StainCareGuidanceSchema = z.object({
+  cleaningRecommendation: z.string().trim().min(1).max(240).nullable(),
+  specialTreatment: z.string().trim().min(1).max(240).nullable(),
+  safetyNotes: z.array(z.string().trim().min(1).max(240)).max(10),
+  serviceRecommendation: ServiceIdSchema.nullable(),
+});
+
+export type StainCareGuidance = z.infer<typeof StainCareGuidanceSchema>;
+
+/** Strict provider output for Phase E. It has no catalog, booking, or price data. */
+export const StainModelOutputSchema = z
+  .object({
+    status: AnalysisStatusSchema,
+    stain: StainTypeSchema.nullable(),
+    confidence: ConfidenceSchema.nullable(),
+    careGuidance: StainCareGuidanceSchema,
+    warnings: z.array(z.string().trim().min(1).max(240)).max(20),
+  })
+  .superRefine(validateStainSemantics);
+
+export type StainModelOutput = z.infer<typeof StainModelOutputSchema>;
+
+export const StainAnalysisSchema = ReviewedResultSchema.extend({
+  stain: StainTypeSchema.nullable(),
+  confidence: ConfidenceSchema.nullable(),
+  careGuidance: StainCareGuidanceSchema,
+}).superRefine(validateStainSemantics);
+
+export type StainAnalysis = z.infer<typeof StainAnalysisSchema>;
 
 export const FabricTypeSchema = z.enum([
   "cotton",

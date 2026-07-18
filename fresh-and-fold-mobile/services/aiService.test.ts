@@ -21,7 +21,7 @@ class MockFormData {
 vi.stubGlobal("FormData", MockFormData);
 vi.stubGlobal("fetch", mocks.fetch);
 
-import { AiServiceError, analyzeFabric } from "./aiService";
+import { AiServiceError, analyzeFabric, analyzeStain } from "./aiService";
 
 const response = (body: unknown, status = 200, requestId = "fabric_request_123") => ({
   ok: status >= 200 && status < 300,
@@ -86,5 +86,34 @@ describe("Fabric Identification transport", () => {
       status: 504,
       requestId: "body_fabric_request_456",
     } satisfies Partial<AiServiceError>);
+  });
+
+  it("uploads a normalized image to the provider-agnostic stain endpoint", async () => {
+    mocks.fetch.mockResolvedValue(
+      response({
+        status: "no_match",
+        stain: null,
+        confidence: null,
+        careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
+        warnings: [],
+        requestId: "stain_request_123",
+        requiresUserReview: true,
+      })
+    );
+
+    await analyzeStain({ uri: "file:///stain.jpg", name: "stain.jpg", type: "image/jpeg" });
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/ai\/stain\/analyze$/),
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer mobile-token" },
+        body: expect.any(MockFormData),
+      })
+    );
+    expect(mocks.append).toHaveBeenCalledWith(
+      "image",
+      expect.objectContaining({ uri: "file:///stain.jpg", type: "image/jpeg" })
+    );
   });
 });

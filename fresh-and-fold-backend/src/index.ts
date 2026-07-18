@@ -23,6 +23,7 @@ import { authMiddleware, AuthRequest } from "./middleware/authMiddleware";
 import { createRateLimit } from "./middleware/rateLimit";
 import { registerGarmentRecognitionRoutes } from "./ai/garmentRecognition";
 import { registerFabricIdentificationRoutes } from "./ai/fabricIdentification";
+import { registerStainDetectionRoutes } from "./ai/stainDetection";
 import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
 import { sendPushNotification } from "./utils/pushNotifications";
 import {
@@ -220,6 +221,7 @@ app.use(
     registerRoutes: (router) => {
       registerGarmentRecognitionRoutes(router);
       registerFabricIdentificationRoutes(router);
+      registerStainDetectionRoutes(router);
     },
   })
 );

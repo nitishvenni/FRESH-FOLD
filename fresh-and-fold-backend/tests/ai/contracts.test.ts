@@ -3,6 +3,7 @@ import {
   BookingDraftSchema,
   FabricModelOutputSchema,
   GarmentModelOutputSchema,
+  StainModelOutputSchema,
 } from "../../src/ai/contracts";
 
 describe("AI contracts", () => {
@@ -95,6 +96,30 @@ describe("AI contracts", () => {
           ironing: "Iron normally.",
           serviceRecommendation: "steam",
         },
+        warnings: [],
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts a no-stain result only with null stain and confidence", () => {
+    expect(
+      StainModelOutputSchema.safeParse({
+        status: "no_match",
+        stain: null,
+        confidence: null,
+        careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
+        warnings: [],
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects an inconsistent stain no_match result", () => {
+    expect(
+      StainModelOutputSchema.safeParse({
+        status: "no_match",
+        stain: "coffee",
+        confidence: 0.8,
+        careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
         warnings: [],
       }).success
     ).toBe(false);

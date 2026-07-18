@@ -1,0 +1,136 @@
+import { randomUUID } from "crypto";
+import express from "express";
+import jwt from "jsonwebtoken";
+import request from "supertest";
+import { describe, expect, it, vi } from "vitest";
+import { AiError } from "../../src/ai/errors";
+import { AI_MAX_IMAGE_BYTES } from "../../src/ai/imageInput";
+import { AiProvider } from "../../src/ai/provider";
+import { createAiRateLimit, createAiRouter } from "../../src/ai/router";
+import { registerStainDetectionRoutes } from "../../src/ai/stainDetection";
+
+const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+const authHeader = () => ({ Authorization: `Bearer ${jwt.sign({ userId: "stain-user" }, process.env.JWT_SECRET as string)}` });
+const guidance = {
+  cleaningRecommendation: "Blot gently and check the garment care label.",
+  specialTreatment: "Avoid heat until the mark is better understood.",
+  safetyNotes: ["Test any treatment on an inconspicuous area where appropriate."],
+  serviceRecommendation: "wash" as const,
+};
+
+const providerWithOutput = (output: unknown) => ({ parse: vi.fn().mockResolvedValue(output) }) as unknown as AiProvider;
+const createStainApp = (provider: AiProvider, max = 10) => {
+  const app = express();
+  app.use("/ai", createAiRouter({
+    rateLimit: createAiRateLimit({ windowMs: 60_000, max, namespaceSuffix: randomUUID() }),
+    registerRoutes: (router) => registerStainDetectionRoutes(router, provider),
+  }));
+  return app;
+};
+const postImage = (app: express.Express) => request(app).post("/ai/stain/analyze").set(authHeader()).attach("image", jpeg, { filename: "stain.jpg", contentType: "image/jpeg" });
+
+describe("stain detection endpoint", () => {
+  process.env.JWT_SECRET = "stain-detection-test-secret";
+
+  it.each(["coffee", "blood", "oil", "ink", "mud", "wine", "grass", "sweat", "unknown"] as const)("accepts %s as an approved stain", async (stain) => {
+    const provider = providerWithOutput({
+      status: stain === "unknown" ? "partial" : "complete",
+      stain,
+      confidence: stain === "unknown" ? 0.31 : 0.82,
+      careGuidance: guidance,
+      warnings: stain === "unknown" ? ["The visible mark is unclear."] : [],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({ stain, requiresUserReview: true });
+  });
+
+  it.each(["partial", "unreadable"] as const)("returns an honest %s result", async (status) => {
+    const provider = providerWithOutput({
+      status,
+      stain: "unknown",
+      confidence: 0.1,
+      careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
+      warnings: ["No reliable stain classification is available."],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({ status, stain: "unknown" });
+  });
+
+  it("preserves a low-confidence unknown stain without coercing it", async () => {
+    const provider = providerWithOutput({
+      status: "partial", stain: "unknown", confidence: 0.08,
+      careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
+      warnings: ["The mark cannot be reliably classified."],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({ stain: "unknown", confidence: 0.08 });
+  });
+
+  it("returns no stain only as no_match with null stain and confidence", async () => {
+    const provider = providerWithOutput({
+      status: "no_match", stain: null, confidence: null,
+      careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
+      warnings: [],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({ status: "no_match", stain: null, confidence: null });
+  });
+
+  it("does not expose catalog, quantity, price, booking, payment, or order data", async () => {
+    const provider = providerWithOutput({ status: "complete", stain: "coffee", confidence: 0.9, careGuidance: guidance, warnings: [] });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    for (const forbiddenKey of ["catalogItemId", "quantity", "price", "booking", "payment", "order"]) {
+      expect(response.body).not.toHaveProperty(forbiddenKey);
+    }
+  });
+
+  it.each([
+    ["invalid stain", "complete", "rust", 0.8, guidance],
+    ["confidence below zero", "complete", "coffee", -0.1, guidance],
+    ["confidence above one", "complete", "coffee", 1.1, guidance],
+    ["malformed guidance", "complete", "coffee", 0.8, { ...guidance, safetyNotes: "unsafe" }],
+    ["invalid service recommendation", "complete", "coffee", 0.8, { ...guidance, serviceRecommendation: "steam" }],
+    ["inconsistent no_match", "no_match", "coffee", 0.8, guidance],
+  ])("rejects %s from a mocked provider", async (_caseName, status, stain, confidence, careGuidance) => {
+    const response = await postImage(createStainApp(providerWithOutput({ status, stain, confidence, careGuidance, warnings: [] }))).expect(502);
+    expect(response.body.code).toBe("AI_INVALID_PROVIDER_RESPONSE");
+  });
+
+  it("propagates the Phase A request ID into the result", async () => {
+    const provider = providerWithOutput({ status: "complete", stain: "mud", confidence: 0.85, careGuidance: guidance, warnings: [] });
+    const requestId = "stain_request_123";
+    const response = await request(createStainApp(provider)).post("/ai/stain/analyze").set(authHeader()).set("X-Request-Id", requestId).attach("image", jpeg, { filename: "stain.jpg", contentType: "image/jpeg" }).expect(200);
+    expect(response.headers["x-request-id"]).toBe(requestId);
+    expect(response.body.requestId).toBe(requestId);
+  });
+
+  it("rejects unauthenticated requests before provider invocation", async () => {
+    const provider = providerWithOutput({});
+    await request(createStainApp(provider)).post("/ai/stain/analyze").attach("image", jpeg, { filename: "stain.jpg", contentType: "image/jpeg" }).expect(401);
+    expect((provider.parse as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it("applies the existing AI rate limit", async () => {
+    const provider = providerWithOutput({ status: "no_match", stain: null, confidence: null, careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null }, warnings: [] });
+    const app = createStainApp(provider, 1);
+    await postImage(app).expect(200);
+    expect((await postImage(app).expect(429)).body).toMatchObject({ code: "AI_RATE_LIMITED", retryable: true });
+  });
+
+  it("rejects invalid, multiple, and oversized uploads before provider invocation", async () => {
+    const provider = providerWithOutput({});
+    const app = createStainApp(provider);
+    await request(app).post("/ai/stain/analyze").set(authHeader()).attach("image", Buffer.from("not an image"), { filename: "fake.jpg", contentType: "image/jpeg" }).expect(400);
+    await request(app).post("/ai/stain/analyze").set(authHeader()).attach("image", jpeg, { filename: "one.jpg", contentType: "image/jpeg" }).attach("image", jpeg, { filename: "two.jpg", contentType: "image/jpeg" }).expect(400);
+    await request(app).post("/ai/stain/analyze").set(authHeader()).attach("image", Buffer.alloc(AI_MAX_IMAGE_BYTES + 1), { filename: "large.jpg", contentType: "image/jpeg" }).expect(413);
+    expect((provider.parse as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["AI_NOT_CONFIGURED", 503], ["AI_TIMEOUT", 504], ["AI_PROVIDER_UNAVAILABLE", 503], ["AI_INVALID_PROVIDER_RESPONSE", 502],
+  ] as const)("serializes %s through the existing AI error contract", async (code, status) => {
+    const provider = { parse: vi.fn().mockRejectedValue(new AiError(code)) } as unknown as AiProvider;
+    const response = await postImage(createStainApp(provider)).expect(status);
+    expect(response.body).toMatchObject({ code, requestId: response.headers["x-request-id"] });
+  });
+});

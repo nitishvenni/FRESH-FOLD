@@ -105,3 +105,32 @@ export type FabricIdentificationResult = {
   requestId: string;
   requiresUserReview: true;
 };
+
+export type StainType =
+  | "coffee"
+  | "blood"
+  | "oil"
+  | "ink"
+  | "mud"
+  | "wine"
+  | "grass"
+  | "sweat"
+  | "unknown";
+
+/** Advisory only; no stain-care result changes booking or pricing state. */
+export type StainCareGuidance = {
+  cleaningRecommendation: string | null;
+  specialTreatment: string | null;
+  safetyNotes: string[];
+  serviceRecommendation: "wash" | "dry" | "express" | null;
+};
+
+export type StainAnalysisResult = {
+  status: AiAnalysisStatus;
+  stain: StainType | null;
+  confidence: number | null;
+  careGuidance: StainCareGuidance;
+  warnings: string[];
+  requestId: string;
+  requiresUserReview: true;
+};
