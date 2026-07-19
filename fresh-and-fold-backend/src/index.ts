@@ -25,6 +25,7 @@ import { registerGarmentRecognitionRoutes } from "./ai/garmentRecognition";
 import { registerFabricIdentificationRoutes } from "./ai/fabricIdentification";
 import { registerStainDetectionRoutes } from "./ai/stainDetection";
 import { registerCareLabelReaderRoutes } from "./ai/careLabelReader";
+import { registerNaturalLanguageBookingRoutes } from "./ai/naturalLanguageBooking";
 import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
 import { sendPushNotification } from "./utils/pushNotifications";
 import {
@@ -213,8 +214,6 @@ app.use(
     origin: "*",
   })
 );
-app.use(express.json());
-
 app.use(
   "/ai",
   createAiRouter({
@@ -224,9 +223,14 @@ app.use(
       registerFabricIdentificationRoutes(router);
       registerStainDetectionRoutes(router);
       registerCareLabelReaderRoutes(router);
+      registerNaturalLanguageBookingRoutes(router);
     },
   })
 );
+
+// AI text routes parse after their request ID/auth/rate-limit middleware so a
+// malformed AI JSON body still receives the standard AI error contract.
+app.use(express.json());
 
 app.get("/", (_req, res) => {
   res.json({

@@ -10,7 +10,7 @@ import ItemCard from "../components/ItemCard";
 import ServiceModeSelector from "../components/ServiceModeSelector";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { allItems, clothingItems, homeItems, initialItems, ItemKey } from "../utils/bookingData";
-import { hydrateSmartScanBookingPrefill, shouldApplySmartScanPrefill } from "../utils/aiBookingDraft";
+import { hydrateAiBookingPrefill, shouldApplyAiBookingPrefill } from "../utils/aiBookingDraft";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
 
@@ -46,20 +46,26 @@ export default function SelectService() {
   const [items, setItems] = useState(initialItems);
   const appliedPrefillRouteValue = useRef<string | null>(null);
   const hydratedPrefill = useMemo(
-    () => hydrateSmartScanBookingPrefill(params.aiPrefill),
+    () => hydrateAiBookingPrefill(params.aiPrefill),
     [params.aiPrefill]
   );
 
   useEffect(() => {
     if (
       hydratedPrefill &&
-      shouldApplySmartScanPrefill(
+      shouldApplyAiBookingPrefill(
         appliedPrefillRouteValue.current,
         params.aiPrefill,
         hydratedPrefill
       )
     ) {
-      setItems(hydratedPrefill);
+      setItems(hydratedPrefill.items);
+      if (hydratedPrefill.service === "express") {
+        setSelectedSpeed("express");
+      } else if (hydratedPrefill.service === "wash" || hydratedPrefill.service === "dry") {
+        setSelectedSpeed("standard");
+        setSelectedType(hydratedPrefill.service);
+      }
       appliedPrefillRouteValue.current = params.aiPrefill;
     }
   }, [hydratedPrefill, params.aiPrefill]);

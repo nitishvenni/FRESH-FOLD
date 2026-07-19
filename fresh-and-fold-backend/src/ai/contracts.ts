@@ -459,3 +459,118 @@ export const BookingDraftSchema = ReviewedResultSchema.extend({
 });
 
 export type BookingDraft = z.infer<typeof BookingDraftSchema>;
+
+/**
+ * Phase G accepts only a bounded typed request. The source text is untrusted
+ * data and is never returned by this contract.
+ */
+export const NaturalLanguageBookingRequestSchema = z
+  .object({
+    requestText: z.string().trim().min(1).max(1_000),
+  })
+  .strict();
+
+export const NaturalLanguageBookingStatusSchema = z.enum(["complete", "partial", "no_match"]);
+
+/** Only slots that exist in the current scheduler can be represented. */
+export const PickupSlotSchema = z.enum([
+  "9 AM - 12 PM",
+  "12 PM - 3 PM",
+  "3 PM - 6 PM",
+]);
+
+/** Bounded application fields make uncertainty reviewable without echoing raw text. */
+export const BookingUnresolvedFieldSchema = z.enum([
+  "items",
+  "quantity",
+  "service",
+  "pickup_date",
+  "pickup_slot",
+  "special_instructions",
+]);
+
+/**
+ * Provider boundary for Phase G. It intentionally contains observed garment
+ * labels, never catalog IDs or other authoritative booking values.
+ */
+export const NaturalLanguageBookingModelOutputSchema = z
+  .object({
+    status: NaturalLanguageBookingStatusSchema,
+    items: z.array(DetectedGarmentSchema).max(30).optional().default([]),
+    service: ServiceIdSchema.nullable().optional().default(null),
+    pickupDate: z.string().date().nullable().optional().default(null),
+    pickupSlot: PickupSlotSchema.nullable().optional().default(null),
+    pickupPreference: z.string().trim().min(1).max(240).nullable().optional().default(null),
+    specialInstructions: z.string().trim().max(1_000).nullable().optional().default(null),
+    unresolvedFields: z.array(BookingUnresolvedFieldSchema).max(20).optional().default([]),
+    warnings: z.array(z.string().trim().min(1).max(240)).max(20).optional().default([]),
+  })
+  .strict();
+
+export type NaturalLanguageBookingModelOutput = z.infer<
+  typeof NaturalLanguageBookingModelOutputSchema
+>;
+
+const validateNaturalLanguageBookingResult = (
+  value: {
+    status: z.infer<typeof NaturalLanguageBookingStatusSchema>;
+    items: readonly MappedGarmentDetection[];
+    service: z.infer<typeof ServiceIdSchema> | null;
+    pickupDate: string | null;
+    pickupSlot: z.infer<typeof PickupSlotSchema> | null;
+    pickupPreference: string | null;
+    specialInstructions: string | null;
+    unresolvedFields: readonly z.infer<typeof BookingUnresolvedFieldSchema>[];
+  },
+  context: z.RefinementCtx
+) => {
+  const hasUnresolvedItems = value.items.some(
+    (item) => item.mappingStatus !== "mapped" || item.catalogItemId === null || item.quantity === null
+  );
+  const hasAnyBookingDetail =
+    value.items.length > 0 ||
+    value.service !== null ||
+    value.pickupDate !== null ||
+    value.pickupSlot !== null ||
+    value.pickupPreference !== null ||
+    value.specialInstructions !== null;
+
+  if (value.status === "no_match") {
+    if (hasAnyBookingDetail || value.unresolvedFields.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A no_match result cannot include booking details.",
+      });
+    }
+    return;
+  }
+
+  if (!hasAnyBookingDetail) {
+    context.addIssue({
+      code: "custom",
+      message: "A booking result needs details or no_match status.",
+    });
+  }
+
+  if (
+    value.status === "complete" &&
+    (hasUnresolvedItems || value.unresolvedFields.length > 0 || value.items.length === 0)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "A complete booking result cannot retain unresolved information.",
+    });
+  }
+};
+
+/** Strict public Phase G result, after deterministic catalog mapping. */
+export const NaturalLanguageBookingResultSchema = BookingDraftSchema.extend({
+  status: NaturalLanguageBookingStatusSchema,
+  source: z.literal("natural_language"),
+  pickupSlot: PickupSlotSchema.nullable(),
+  unresolvedFields: z.array(BookingUnresolvedFieldSchema).max(20),
+})
+  .strict()
+  .superRefine(validateNaturalLanguageBookingResult);
+
+export type NaturalLanguageBookingResult = z.infer<typeof NaturalLanguageBookingResultSchema>;

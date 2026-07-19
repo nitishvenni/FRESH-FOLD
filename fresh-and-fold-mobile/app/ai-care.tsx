@@ -18,6 +18,21 @@ export default function AICareScreen() {
       <Text style={[styles.subtitle, { color: theme.textMuted }]}>Your intelligent laundry care space.</Text>
       <TouchableOpacity
         accessibilityRole="button"
+        accessibilityLabel="Open Natural-Language Booking"
+        activeOpacity={0.86}
+        style={styles.secondaryCardPressable}
+        onPress={() => router.push("/ai-booking" as never)}
+      >
+        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
+            <MaterialIcons name="edit-note" size={24} color={theme.primary} />
+          </View>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Describe a Booking</Text>
+          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Type your request and review an editable booking draft.</Text>
+        </Card>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
         accessibilityLabel="Open Smart Scan"
         activeOpacity={0.86}
         style={styles.cardPressable}

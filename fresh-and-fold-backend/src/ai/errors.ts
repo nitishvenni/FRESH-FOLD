@@ -4,6 +4,7 @@ import multer from "multer";
 import { logAiDiagnostic } from "./diagnostics";
 
 export const AI_ERROR_CODES = [
+  "AI_INVALID_REQUEST",
   "AI_NOT_CONFIGURED",
   "AI_RATE_LIMITED",
   "AI_INVALID_IMAGE",
@@ -21,6 +22,7 @@ type AiErrorOptions = {
 };
 
 const defaultMessages: Record<AiErrorCode, string> = {
+  AI_INVALID_REQUEST: "Provide a valid booking request.",
   AI_NOT_CONFIGURED: "AI is not configured for this request.",
   AI_RATE_LIMITED: "Too many AI requests. Please try again shortly.",
   AI_INVALID_IMAGE: "Provide exactly one valid image.",
@@ -32,6 +34,7 @@ const defaultMessages: Record<AiErrorCode, string> = {
 };
 
 const defaultRetryable: Record<AiErrorCode, boolean> = {
+  AI_INVALID_REQUEST: false,
   AI_NOT_CONFIGURED: false,
   AI_RATE_LIMITED: true,
   AI_INVALID_IMAGE: false,
@@ -85,6 +88,13 @@ export const sendAiError = (res: Response, error: AiError, status: number) => {
 const fromMulterError = (error: multer.MulterError) =>
   new AiError(error.code === "LIMIT_FILE_SIZE" ? "AI_IMAGE_TOO_LARGE" : "AI_INVALID_IMAGE");
 
+const isInvalidJsonBody = (error: unknown): boolean =>
+  error instanceof SyntaxError &&
+  typeof error === "object" &&
+  "status" in error &&
+  (error as { status?: unknown }).status === 400 &&
+  "body" in error;
+
 const statusForAiError = (error: AiError): number => {
   switch (error.code) {
     case "AI_IMAGE_TOO_LARGE":
@@ -123,6 +133,16 @@ export const aiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => 
       errorCode: aiError.code,
     });
     return sendAiError(res, aiError, statusForAiError(aiError));
+  }
+
+  if (isInvalidJsonBody(error)) {
+    const aiError = new AiError("AI_INVALID_REQUEST");
+    logAiDiagnostic({
+      requestId: getAiRequestId(res),
+      stage: "response_normalized_failure",
+      errorCode: aiError.code,
+    });
+    return sendAiError(res, aiError, 400);
   }
 
   const aiError = new AiError("AI_PROVIDER_UNAVAILABLE");

@@ -1,6 +1,7 @@
 import type { ItemKey } from "../utils/bookingData";
 
 export type AiErrorCode =
+  | "AI_INVALID_REQUEST"
   | "AI_NOT_CONFIGURED"
   | "AI_RATE_LIMITED"
   | "AI_INVALID_IMAGE"
@@ -47,6 +48,15 @@ export type BookingDraft = {
   unresolvedFields: string[];
 };
 
+export type NaturalLanguageBookingResult = BookingDraft & {
+  status: "complete" | "partial" | "no_match";
+  source: "natural_language";
+  pickupSlot: "9 AM - 12 PM" | "12 PM - 3 PM" | "3 PM - 6 PM" | null;
+  unresolvedFields: Array<
+    "items" | "quantity" | "service" | "pickup_date" | "pickup_slot" | "special_instructions"
+  >;
+};
+
 /** Local-only review state; it is never sent to pricing, payment, or order APIs. */
 export type BookingReviewItem = {
   id: string;
@@ -63,6 +73,14 @@ export type SmartScanBookingPrefill = {
   version: 1;
   source: "smart_scan";
   items: Partial<Record<ItemKey, number>>;
+};
+
+/** Compact reviewed Phase G route state. It deliberately omits all AI metadata. */
+export type NaturalLanguageBookingPrefill = {
+  version: 2;
+  source: "natural_language";
+  items: Partial<Record<ItemKey, number>>;
+  service?: "wash" | "dry" | "express";
 };
 
 export type GarmentRecognitionResult = {

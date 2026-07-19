@@ -1,6 +1,7 @@
 import type { AiErrorCode, AiErrorResponse } from "../types/ai";
 
 const AI_ERROR_CODES: readonly AiErrorCode[] = [
+  "AI_INVALID_REQUEST",
   "AI_NOT_CONFIGURED",
   "AI_RATE_LIMITED",
   "AI_INVALID_IMAGE",

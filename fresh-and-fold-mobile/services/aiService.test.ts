@@ -21,7 +21,13 @@ class MockFormData {
 vi.stubGlobal("FormData", MockFormData);
 vi.stubGlobal("fetch", mocks.fetch);
 
-import { AiServiceError, analyzeCareLabel, analyzeFabric, analyzeStain } from "./aiService";
+import {
+  AiServiceError,
+  analyzeCareLabel,
+  analyzeFabric,
+  analyzeStain,
+  parseNaturalLanguageBooking,
+} from "./aiService";
 
 const response = (body: unknown, status = 200, requestId = "fabric_request_123") => ({
   ok: status >= 200 && status < 300,
@@ -145,5 +151,59 @@ describe("Fabric Identification transport", () => {
       "image",
       expect.objectContaining({ uri: "file:///care-label.jpg", type: "image/jpeg" })
     );
+  });
+
+  it("sends bounded typed text to the provider-agnostic natural-language endpoint", async () => {
+    mocks.fetch.mockResolvedValue(
+      response({
+        status: "partial",
+        warnings: [],
+        requestId: "booking_request_123",
+        requiresUserReview: true,
+        source: "natural_language",
+        items: [],
+        service: null,
+        pickupDate: null,
+        pickupSlot: null,
+        pickupPreference: "tomorrow evening",
+        specialInstructions: null,
+        unresolvedFields: ["items", "pickup_slot"],
+      })
+    );
+
+    await parseNaturalLanguageBooking("Wash my shirts tomorrow evening");
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/ai\/booking\/parse$/),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          Authorization: "Bearer mobile-token",
+        }),
+        body: JSON.stringify({ requestText: "Wash my shirts tomorrow evening" }),
+      })
+    );
+  });
+
+  it("preserves invalid request error details without exposing provider data", async () => {
+    mocks.fetch.mockResolvedValue(
+      response(
+        {
+          code: "AI_INVALID_REQUEST",
+          message: "Provide a valid booking request.",
+          retryable: false,
+          requestId: "booking_request_456",
+        },
+        400,
+        "header_booking_request_456"
+      )
+    );
+
+    await expect(parseNaturalLanguageBooking("   ")).rejects.toMatchObject({
+      code: "AI_INVALID_REQUEST",
+      status: 400,
+      requestId: "booking_request_456",
+    } satisfies Partial<AiServiceError>);
   });
 });

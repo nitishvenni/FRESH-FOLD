@@ -5,6 +5,8 @@ import {
   CareLabelModelOutputSchema,
   FabricModelOutputSchema,
   GarmentModelOutputSchema,
+  NaturalLanguageBookingModelOutputSchema,
+  NaturalLanguageBookingResultSchema,
   StainAnalysisSchema,
   StainModelOutputSchema,
 } from "../../src/ai/contracts";
@@ -242,6 +244,40 @@ describe("AI contracts", () => {
         warnings: [],
         requestId: "care_label_request_123",
         requiresUserReview: true,
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts type-safe natural-language provider output but keeps its final review contract strict", () => {
+    const providerOutput = NaturalLanguageBookingModelOutputSchema.safeParse({
+      status: "partial",
+      items: [{ detectedLabel: "Shirt", quantity: null, confidence: 0.5 }],
+      pickupPreference: "tomorrow evening",
+      unresolvedFields: ["quantity", "pickup_slot"],
+    });
+    expect(providerOutput.success).toBe(true);
+
+    expect(
+      NaturalLanguageBookingResultSchema.safeParse({
+        status: "complete",
+        warnings: [],
+        requestId: "booking_request_123",
+        requiresUserReview: true,
+        source: "natural_language",
+        items: [{
+          detectedLabel: "Shirt",
+          normalizedLabel: "shirt",
+          catalogItemId: "shirt",
+          mappingStatus: "mapped",
+          quantity: null,
+          confidence: 0.5,
+        }],
+        service: null,
+        pickupDate: null,
+        pickupSlot: null,
+        pickupPreference: null,
+        specialInstructions: null,
+        unresolvedFields: [],
       }).success
     ).toBe(false);
   });

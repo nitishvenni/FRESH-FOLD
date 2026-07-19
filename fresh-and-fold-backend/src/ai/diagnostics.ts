@@ -21,6 +21,10 @@ export type AiDiagnosticStage =
   | "care_label_provider_output_validation"
   | "care_label_normalization"
   | "care_label_final_response_validation"
+  | "booking_request_validation"
+  | "booking_provider_output_validation"
+  | "booking_normalization"
+  | "booking_final_response_validation"
   | "deterministic_mapping_completed"
   | "response_completed"
   | "response_normalized_failure";

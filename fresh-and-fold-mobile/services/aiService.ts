@@ -4,6 +4,7 @@ import type {
   CareLabelAnalysisResult,
   FabricIdentificationResult,
   GarmentRecognitionResult,
+  NaturalLanguageBookingResult,
   StainAnalysisResult,
 } from "../types/ai";
 import { AiServiceError, parseAiErrorResponse } from "./aiErrors";
@@ -19,7 +20,7 @@ const getAuthToken = async () =>
  * JSON-only transport foundation for later typed AI endpoints. It does not
  * select images or send multipart data; image upload remains Phase B work.
  */
-export const aiJsonRequest = async <T>(endpoint: string, body: unknown): Promise<T> => {
+export const aiJsonRequest = async <T>(endpoint: string, body: unknown, signal?: AbortSignal): Promise<T> => {
   const token = await getAuthToken();
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -29,6 +30,7 @@ export const aiJsonRequest = async <T>(endpoint: string, body: unknown): Promise
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   const payload = (await response.json().catch(() => ({}))) as unknown;
@@ -40,6 +42,29 @@ export const aiJsonRequest = async <T>(endpoint: string, body: unknown): Promise
   }
 
   return payload as T;
+};
+
+/** Sends one bounded typed request to the provider-agnostic Phase G endpoint. */
+export const parseNaturalLanguageBooking = async (
+  requestText: string,
+  signal?: AbortSignal
+): Promise<NaturalLanguageBookingResult> => {
+  try {
+    return await aiJsonRequest<NaturalLanguageBookingResult>(
+      "/ai/booking/parse",
+      { requestText },
+      signal
+    );
+  } catch (error) {
+    if (error instanceof AiServiceError || isAbortError(error)) {
+      throw error;
+    }
+
+    throw new AiServiceError("Network error. Please check your connection and try again.", {
+      code: "AI_REQUEST_FAILED",
+      retryable: true,
+    });
+  }
 };
 
 export type AiUploadImage = {

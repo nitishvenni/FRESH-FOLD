@@ -3,10 +3,13 @@ import type { GarmentRecognitionResult } from "../types/ai";
 import { initialItems, ItemKey } from "./bookingData";
 import {
   buildSmartScanBookingPrefill,
+  buildNaturalLanguageBookingPrefill,
   createBookingReviewItems,
+  hydrateAiBookingPrefill,
   hydrateSmartScanBookingPrefill,
   removeReviewItem,
   serializeSmartScanBookingPrefill,
+  serializeNaturalLanguageBookingPrefill,
   setReviewItemQuantity,
   shouldApplySmartScanPrefill,
 } from "./aiBookingDraft";
@@ -195,5 +198,37 @@ describe("Smart Scan compact booking prefill", () => {
     expect(shouldApplySmartScanPrefill(null, routeValue, hydrated)).toBe(true);
     expect(shouldApplySmartScanPrefill(routeValue, routeValue, hydrated)).toBe(false);
     expect(shouldApplySmartScanPrefill(null, undefined, hydrated)).toBe(false);
+  });
+
+  it("builds a strict V2 natural-language prefill only from reviewed items and an accepted service", () => {
+    const review = createBookingReviewItems(result([mapped("shirt", 2), mapped("jeans", 1)]));
+    const built = buildNaturalLanguageBookingPrefill(review, "dry");
+
+    expect(built).toEqual({
+      prefill: { version: 2, source: "natural_language", items: { shirt: 2, jeans: 1 }, service: "dry" },
+      unresolvedQuantityItemIds: [],
+    });
+    expect(hydrateAiBookingPrefill(serializeNaturalLanguageBookingPrefill(built.prefill!))).toEqual({
+      items: { ...initialItems, shirt: 2, jeans: 1 },
+      service: "dry",
+    });
+  });
+
+  it("allows a reviewed global service without items but rejects unreviewed or injected V2 data", () => {
+    const built = buildNaturalLanguageBookingPrefill([], "express");
+    expect(built.prefill).toEqual({ version: 2, source: "natural_language", items: {}, service: "express" });
+
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {}, price: 20 }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {}, payment: { amount: 20 } }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {}, orderId: "order_123", provider: "gemini" }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {}, requestText: "raw request", address: "private" }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: { suit: 1 } }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {} }))).toBeNull();
+  });
+
+  it("keeps V1 Smart Scan hydration unchanged through the common hydrator", () => {
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 1, source: "smart_scan", items: { shirt: 2 } }))).toEqual({
+      items: { ...initialItems, shirt: 2 },
+    });
   });
 });
