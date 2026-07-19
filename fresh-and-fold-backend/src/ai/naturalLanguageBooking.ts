@@ -47,6 +47,13 @@ export const normalizeNaturalLanguageBookingOutput = (
 
   const items = output.items.map(mapDetectedGarment);
   const unresolvedFields = new Set(output.unresolvedFields);
+  // A provider cannot both mark a dimension unresolved and have it become a
+  // review default. Preserve the unresolved signal and deterministically clear
+  // the contradictory advisory value rather than guessing user intent.
+  const cleaningService = unresolvedFields.has("cleaning_service")
+    ? null
+    : output.cleaningService;
+  const speed = unresolvedFields.has("speed") ? null : output.speed;
   let pickupDate = output.pickupDate;
   if (pickupDate && isPastPickupDate(pickupDate)) {
     pickupDate = null;
@@ -72,8 +79,8 @@ export const normalizeNaturalLanguageBookingOutput = (
     warnings: output.warnings,
     source: "natural_language" as const,
     items,
-    cleaningService: output.cleaningService,
-    speed: output.speed,
+    cleaningService,
+    speed,
     pickupDate,
     pickupSlot: output.pickupSlot,
     pickupPreference: output.pickupPreference,

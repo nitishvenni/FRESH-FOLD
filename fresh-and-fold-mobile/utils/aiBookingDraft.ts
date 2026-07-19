@@ -173,6 +173,28 @@ export type NaturalLanguagePrefillBuildResult = {
   unresolvedQuantityItemIds: string[];
 };
 
+/**
+ * A non-null normalized value is review-selected only when its corresponding
+ * field is not unresolved. The backend normalizer also clears contradictory
+ * values, keeping this client guard deliberately defensive.
+ */
+export const getDefaultNaturalLanguageBookingSelections = (
+  result: NaturalLanguageBookingResult | null
+): {
+  cleaningService?: "wash" | "dry";
+  speed?: "standard" | "express";
+} => {
+  if (!result) return {};
+  return {
+    ...(result.cleaningService && !result.unresolvedFields.includes("cleaning_service")
+      ? { cleaningService: result.cleaningService }
+      : {}),
+    ...(result.speed && !result.unresolvedFields.includes("speed")
+      ? { speed: result.speed }
+      : {}),
+  };
+};
+
 /** Builds Phase G.1's V3 payload only from reviewed items and accepted dimensions. */
 export const buildNaturalLanguageBookingPrefill = (
   reviewItems: BookingReviewItem[],

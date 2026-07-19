@@ -5,6 +5,7 @@ import {
   buildSmartScanBookingPrefill,
   buildNaturalLanguageBookingPrefill,
   createBookingReviewItems,
+  getDefaultNaturalLanguageBookingSelections,
   hydrateAiBookingPrefill,
   hydrateSmartScanBookingPrefill,
   removeReviewItem,
@@ -279,6 +280,36 @@ describe("Smart Scan compact booking prefill", () => {
     expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {}, requestText: "raw request", address: "private" }))).toBeNull();
     expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: { suit: 1 } }))).toBeNull();
     expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {} }))).toBeNull();
+  });
+
+  it("defaults explicit dry and express intent into V3 and hydrates both booking controls", () => {
+    const explicit: NaturalLanguageBookingResult = {
+      status: "complete", warnings: [], requestId: "booking_request_explicit", requiresUserReview: true,
+      source: "natural_language", items: [mapped("jacket", 2)], cleaningService: "dry", speed: "express",
+      pickupDate: null, pickupSlot: null, pickupPreference: null, specialInstructions: null, unresolvedFields: [],
+    };
+    const selections = getDefaultNaturalLanguageBookingSelections(explicit);
+    expect(selections).toEqual({ cleaningService: "dry", speed: "express" });
+    const prefill = buildNaturalLanguageBookingPrefill(createBookingReviewItems(explicit), selections.cleaningService, selections.speed).prefill!;
+    expect(prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry", speed: "express" });
+    expect(hydrateAiBookingPrefill(serializeNaturalLanguageBookingPrefill(prefill))).toEqual({ items: { ...initialItems, jacket: 2 }, cleaningService: "dry", speed: "express" });
+  });
+
+  it("selects only explicit dimensions and lets a deselection exclude each from V3", () => {
+    const review = createBookingReviewItems(result([mapped("jacket", 2)]));
+    expect(buildNaturalLanguageBookingPrefill(review, "dry").prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry" });
+    expect(buildNaturalLanguageBookingPrefill(review, undefined, "express").prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 }, speed: "express" });
+    expect(buildNaturalLanguageBookingPrefill(review).prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 } });
+  });
+
+  it("does not default ambiguous or unresolved booking dimensions", () => {
+    const ambiguous: NaturalLanguageBookingResult = {
+      status: "partial", warnings: [], requestId: "booking_request_ambiguous", requiresUserReview: true,
+      source: "natural_language", items: [mapped("jacket", 2)], cleaningService: "dry", speed: "express",
+      pickupDate: null, pickupSlot: null, pickupPreference: null, specialInstructions: null,
+      unresolvedFields: ["cleaning_service", "speed"],
+    };
+    expect(getDefaultNaturalLanguageBookingSelections(ambiguous)).toEqual({});
   });
 
   it("keeps V1 Smart Scan hydration unchanged through the common hydrator", () => {

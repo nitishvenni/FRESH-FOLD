@@ -9,6 +9,7 @@ import type { BookingReviewItem, NaturalLanguageBookingResult } from "../types/a
 import {
   buildNaturalLanguageBookingPrefill,
   createBookingReviewItems,
+  getDefaultNaturalLanguageBookingSelections,
   removeReviewItem,
   serializeNaturalLanguageBookingPrefill,
   setReviewItemQuantity,
@@ -56,17 +57,18 @@ export default function AiBookingReviewScreen() {
   const result = useMemo(() => parseResult(resultParam), [resultParam]);
   const initialItems = useMemo(() => (result ? createBookingReviewItems(result) : []), [result]);
   const [reviewItems, setReviewItems] = useState<BookingReviewItem[]>(initialItems);
-  const [acceptedCleaningService, setAcceptedCleaningService] = useState<"wash" | "dry" | undefined>();
-  const [acceptedSpeed, setAcceptedSpeed] = useState<"standard" | "express" | undefined>();
+  const defaultSelections = useMemo(() => getDefaultNaturalLanguageBookingSelections(result), [result]);
+  const [acceptedCleaningService, setAcceptedCleaningService] = useState<"wash" | "dry" | undefined>(defaultSelections.cleaningService);
+  const [acceptedSpeed, setAcceptedSpeed] = useState<"standard" | "express" | undefined>(defaultSelections.speed);
   const [showManualItems, setShowManualItems] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     setReviewItems(initialItems);
-    setAcceptedCleaningService(undefined);
-    setAcceptedSpeed(undefined);
+    setAcceptedCleaningService(defaultSelections.cleaningService);
+    setAcceptedSpeed(defaultSelections.speed);
     setReviewError(null);
-  }, [initialItems]);
+  }, [initialItems, defaultSelections.cleaningService, defaultSelections.speed]);
 
   const changeQuantity = (id: string, delta: number) => setReviewItems((items) => {
     const item = items.find((candidate) => candidate.id === id);
@@ -119,8 +121,8 @@ export default function AiBookingReviewScreen() {
 
           <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
             <Text style={[styles.cardTitle, { color: theme.text }]}>Booking suggestions</Text>
-            {result.cleaningService ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Cleaning suggestion: {cleaningLabel[result.cleaningService]}</Text>{acceptedCleaningService === result.cleaningService ? <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedCleaningService(undefined)}><Text style={[styles.remove, { color: theme.warning }]}>Do not prefill cleaning service</Text></TouchableOpacity> : <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedCleaningService(result.cleaningService ?? undefined)}><Text style={[styles.accept, { color: theme.primary }]}>Use this cleaning service in booking</Text></TouchableOpacity>}</> : <Text style={[styles.copy, { color: theme.textMuted }]}>No cleaning service could be confirmed. Choose one in booking.</Text>}
-            {result.speed ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Speed suggestion: {speedLabel[result.speed]}</Text>{acceptedSpeed === result.speed ? <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedSpeed(undefined)}><Text style={[styles.remove, { color: theme.warning }]}>Do not prefill speed</Text></TouchableOpacity> : <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedSpeed(result.speed ?? undefined)}><Text style={[styles.accept, { color: theme.primary }]}>Use this speed in booking</Text></TouchableOpacity>}</> : <Text style={[styles.copy, { color: theme.textMuted }]}>No speed could be confirmed. Choose one in booking.</Text>}
+            {result.cleaningService ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Cleaning service</Text><TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedCleaningService(acceptedCleaningService === result.cleaningService ? undefined : result.cleaningService || undefined)}><Text style={[acceptedCleaningService === result.cleaningService ? styles.accept : styles.copy, { color: acceptedCleaningService === result.cleaningService ? theme.success : theme.textMuted }]}>{acceptedCleaningService === result.cleaningService ? `✓ ${cleaningLabel[result.cleaningService]} · Detected from your request` : cleaningLabel[result.cleaningService]}</Text></TouchableOpacity></> : <Text style={[styles.copy, { color: theme.textMuted }]}>No cleaning service could be confirmed. Choose one in booking.</Text>}
+            {result.speed ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Speed</Text><TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedSpeed(acceptedSpeed === result.speed ? undefined : result.speed || undefined)}><Text style={[acceptedSpeed === result.speed ? styles.accept : styles.copy, { color: acceptedSpeed === result.speed ? theme.success : theme.textMuted }]}>{acceptedSpeed === result.speed ? `✓ ${speedLabel[result.speed]} · Detected from your request` : speedLabel[result.speed]}</Text></TouchableOpacity></> : <Text style={[styles.copy, { color: theme.textMuted }]}>No speed could be confirmed. Choose one in booking.</Text>}
           </Card>
 
           <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>

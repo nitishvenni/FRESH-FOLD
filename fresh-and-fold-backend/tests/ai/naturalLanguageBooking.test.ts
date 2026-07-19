@@ -163,6 +163,23 @@ describe("natural-language booking endpoint", () => {
     });
   });
 
+  it("clears contradictory provider values marked unresolved before review defaults are possible", () => {
+    const normalized = normalizeNaturalLanguageBookingOutput({
+      status: "partial",
+      items: [{ detectedLabel: "Jacket", quantity: 2, confidence: 0.94 }],
+      cleaningService: "dry",
+      speed: "express",
+      pickupDate: null,
+      pickupSlot: null,
+      pickupPreference: null,
+      specialInstructions: null,
+      unresolvedFields: ["cleaning_service", "speed"],
+      warnings: ["The request is ambiguous."],
+    });
+
+    expect(normalized).toMatchObject({ cleaningService: null, speed: null, unresolvedFields: ["cleaning_service", "speed"] });
+  });
+
   it("preserves unsupported labels and conflicting or ambiguous information for review", async () => {
     const provider = providerWithOutput({
       status: "complete",
