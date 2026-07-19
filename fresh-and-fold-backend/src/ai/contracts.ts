@@ -49,10 +49,175 @@ export const GarmentAnalysisSchema = ReviewedResultSchema.extend({
   detections: z.array(MappedGarmentDetectionSchema).max(30),
 });
 
-export const CareLabelAnalysisSchema = ReviewedResultSchema.extend({
-  extractedText: z.string().trim().max(1_000).nullable(),
+export const CareLabelCategorySchema = z.enum([
+  "washing",
+  "bleaching",
+  "drying",
+  "ironing",
+  "dry_cleaning",
+]);
+
+export type CareLabelCategory = z.infer<typeof CareLabelCategorySchema>;
+
+/** Conservative bounded vocabulary. Unrecognized label symbols remain uncertain. */
+export const CareSymbolSchema = z.enum([
+  "wash",
+  "do_not_wash",
+  "hand_wash",
+  "bleach_allowed",
+  "non_chlorine_bleach_only",
+  "do_not_bleach",
+  "tumble_dry",
+  "do_not_tumble_dry",
+  "line_dry",
+  "dry_flat",
+  "iron",
+  "do_not_iron",
+  "dry_clean",
+  "do_not_dry_clean",
+]);
+
+export type CareSymbol = z.infer<typeof CareSymbolSchema>;
+
+export const CareLabelReadingStatusSchema = z.enum([
+  "recognized",
+  "uncertain",
+  "unreadable",
+  "not_shown",
+]);
+
+export type CareLabelReadingStatus = z.infer<typeof CareLabelReadingStatusSchema>;
+
+const CareLabelModelReadingSchema = z.object({
+  category: CareLabelCategorySchema,
+  status: CareLabelReadingStatusSchema,
+  observedSymbol: CareSymbolSchema.nullable().optional().default(null),
+  observedText: z.string().trim().min(1).max(240).nullable().optional().default(null),
+  interpretation: z.string().trim().min(1).max(240).nullable().optional().default(null),
+  confidence: ConfidenceSchema.nullable().optional().default(null),
+});
+
+export type CareLabelModelReading = z.infer<typeof CareLabelModelReadingSchema>;
+
+/** Type-safe provider boundary; deterministic code repairs only safe semantic variation. */
+export const CareLabelModelOutputSchema = z.object({
+  status: AnalysisStatusSchema,
+  extractedText: z.string().trim().min(1).max(1_000).nullable().optional().default(null),
+  readings: z.array(CareLabelModelReadingSchema).max(10).optional().default([]),
+  unreadableRegions: z.array(z.string().trim().min(1).max(120)).max(10).optional().default([]),
+  warnings: z.array(z.string().trim().min(1).max(240)).max(20).optional().default([]),
+});
+
+export type CareLabelModelOutput = z.infer<typeof CareLabelModelOutputSchema>;
+
+export const CareLabelReadingSchema = z.object({
+  category: CareLabelCategorySchema,
+  status: CareLabelReadingStatusSchema,
+  observedSymbol: CareSymbolSchema.nullable(),
+  observedText: z.string().trim().min(1).max(240).nullable(),
+  interpretation: z.string().trim().min(1).max(240).nullable(),
   confidence: ConfidenceSchema.nullable(),
 });
+
+export type CareLabelReading = z.infer<typeof CareLabelReadingSchema>;
+
+export const CARE_LABEL_CATEGORY_ORDER = [
+  "washing",
+  "bleaching",
+  "drying",
+  "ironing",
+  "dry_cleaning",
+] as const satisfies readonly CareLabelCategory[];
+
+const validateCareLabelAnalysis = (
+  value: {
+    status: z.infer<typeof AnalysisStatusSchema>;
+    extractedText: string | null;
+    readings: readonly CareLabelReading[];
+  },
+  context: z.RefinementCtx
+) => {
+  const categories = value.readings.map((reading) => reading.category);
+  const hasCanonicalOrder =
+    categories.length === CARE_LABEL_CATEGORY_ORDER.length &&
+    categories.every((category, index) => category === CARE_LABEL_CATEGORY_ORDER[index]);
+  if (!hasCanonicalOrder) {
+    context.addIssue({
+      code: "custom",
+      message: "Care-label readings must contain each category in canonical order.",
+      path: ["readings"],
+    });
+  }
+
+  for (const [index, reading] of value.readings.entries()) {
+    const hasObservedEvidence = reading.observedSymbol !== null || reading.observedText !== null;
+    if (
+      reading.status === "recognized" &&
+      (!hasObservedEvidence || reading.interpretation === null || reading.confidence === null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A recognized care-label reading requires observed evidence, interpretation, and confidence.",
+        path: ["readings", index],
+      });
+    }
+
+    if (
+      (reading.status === "uncertain" || reading.status === "unreadable") &&
+      (reading.interpretation !== null || reading.confidence !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Uncertain or unreadable readings cannot include an interpretation or confidence.",
+        path: ["readings", index],
+      });
+    }
+
+    if (
+      reading.status === "not_shown" &&
+      (reading.observedSymbol !== null ||
+        reading.observedText !== null ||
+        reading.interpretation !== null ||
+        reading.confidence !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A not_shown reading cannot contain observed or interpreted care data.",
+        path: ["readings", index],
+      });
+    }
+  }
+
+  if (
+    value.status === "no_match" &&
+    (value.extractedText !== null || value.readings.some((reading) => reading.status !== "not_shown"))
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "A no_match result cannot contain care-label evidence.",
+      path: ["status"],
+    });
+  }
+
+  if (
+    value.status === "unreadable" &&
+    (value.extractedText !== null || value.readings.some((reading) => reading.status !== "unreadable"))
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "An unreadable result cannot contain a care-label interpretation.",
+      path: ["status"],
+    });
+  }
+};
+
+export const CareLabelAnalysisSchema = ReviewedResultSchema.extend({
+  extractedText: z.string().trim().min(1).max(1_000).nullable(),
+  readings: z.array(CareLabelReadingSchema).length(CARE_LABEL_CATEGORY_ORDER.length),
+  unreadableRegions: z.array(z.string().trim().min(1).max(120)).max(5),
+}).superRefine(validateCareLabelAnalysis);
+
+export type CareLabelAnalysis = z.infer<typeof CareLabelAnalysisSchema>;
 
 export const ServiceIdSchema = z.enum(["wash", "dry", "express"]);
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BookingDraftSchema,
+  CareLabelAnalysisSchema,
+  CareLabelModelOutputSchema,
   FabricModelOutputSchema,
   GarmentModelOutputSchema,
   StainAnalysisSchema,
@@ -205,5 +207,42 @@ describe("AI contracts", () => {
     expect(StainAnalysisSchema.safeParse({
       ...base, status: "unreadable", stain: "coffee", confidence: 0.8, candidates: [],
     }).success).toBe(false);
+  });
+
+  it("accepts type-safe but recoverable care-label provider output", () => {
+    expect(
+      CareLabelModelOutputSchema.safeParse({
+        status: "complete",
+        readings: [{
+          category: "washing",
+          status: "recognized",
+          observedSymbol: "wash",
+          observedText: "Machine wash",
+          interpretation: "Machine wash.",
+          confidence: 0.86,
+        }],
+      }).success
+    ).toBe(true);
+  });
+
+  it("keeps the final care-label contract strict for canonical category evidence", () => {
+    expect(
+      CareLabelAnalysisSchema.safeParse({
+        status: "complete",
+        extractedText: "Machine wash",
+        readings: [{
+          category: "washing",
+          status: "recognized",
+          observedSymbol: "wash",
+          observedText: "Machine wash",
+          interpretation: "Machine wash.",
+          confidence: 0.86,
+        }],
+        unreadableRegions: [],
+        warnings: [],
+        requestId: "care_label_request_123",
+        requiresUserReview: true,
+      }).success
+    ).toBe(false);
   });
 });

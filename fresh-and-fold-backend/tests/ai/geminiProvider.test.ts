@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { mapDetectedGarment } from "../../src/ai/catalog";
-import { GarmentModelOutputSchema, StainModelOutputSchema } from "../../src/ai/contracts";
+import { CareLabelModelOutputSchema, GarmentModelOutputSchema, StainModelOutputSchema } from "../../src/ai/contracts";
 import { AiError } from "../../src/ai/errors";
 import { GeminiInteractionsClient, GeminiInteractionsProvider } from "../../src/ai/geminiProvider";
 import { OpenAiResponsesProvider } from "../../src/ai/provider";
@@ -170,6 +170,30 @@ describe("GeminiInteractionsProvider", () => {
 
     await expect(
       provider.parse({ ...providerRequest, schema: StainModelOutputSchema })
+    ).resolves.toEqual(output);
+  });
+
+  it("uses the same validated care-label provider contract without a provider-specific branch", async () => {
+    const output = {
+      status: "partial",
+      extractedText: "Machine wash",
+      readings: [{
+        category: "washing",
+        status: "recognized",
+        observedSymbol: "wash",
+        observedText: "Machine wash",
+        interpretation: "Machine wash.",
+        confidence: 0.86,
+      }],
+      unreadableRegions: [],
+      warnings: [],
+    };
+    const provider = configuredProvider({
+      interactions: { create: vi.fn().mockResolvedValue({ output_text: JSON.stringify(output) }) },
+    });
+
+    await expect(
+      provider.parse({ ...providerRequest, schema: CareLabelModelOutputSchema })
     ).resolves.toEqual(output);
   });
 

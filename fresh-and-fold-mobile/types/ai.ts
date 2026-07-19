@@ -106,6 +106,55 @@ export type FabricIdentificationResult = {
   requiresUserReview: true;
 };
 
+export type CareLabelCategory =
+  | "washing"
+  | "bleaching"
+  | "drying"
+  | "ironing"
+  | "dry_cleaning";
+
+export type CareSymbol =
+  | "wash"
+  | "do_not_wash"
+  | "hand_wash"
+  | "bleach_allowed"
+  | "non_chlorine_bleach_only"
+  | "do_not_bleach"
+  | "tumble_dry"
+  | "do_not_tumble_dry"
+  | "line_dry"
+  | "dry_flat"
+  | "iron"
+  | "do_not_iron"
+  | "dry_clean"
+  | "do_not_dry_clean";
+
+export type CareLabelReadingStatus =
+  | "recognized"
+  | "uncertain"
+  | "unreadable"
+  | "not_shown";
+
+export type CareLabelReading = {
+  category: CareLabelCategory;
+  status: CareLabelReadingStatus;
+  observedSymbol: CareSymbol | null;
+  observedText: string | null;
+  interpretation: string | null;
+  confidence: number | null;
+};
+
+/** Care-label text is observed evidence, not a booking or service instruction. */
+export type CareLabelAnalysisResult = {
+  status: AiAnalysisStatus;
+  extractedText: string | null;
+  readings: CareLabelReading[];
+  unreadableRegions: string[];
+  warnings: string[];
+  requestId: string;
+  requiresUserReview: true;
+};
+
 export type StainType =
   | "coffee"
   | "tea"

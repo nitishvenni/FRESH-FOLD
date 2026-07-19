@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AICareLogo from "../components/AICareLogo";
 import Card from "../components/Card";
@@ -12,7 +12,7 @@ export default function AICareScreen() {
   const { theme } = useAppTheme();
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top + 36 }]}>
+    <ScrollView contentContainerStyle={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top + 36, paddingBottom: insets.bottom + 28 }]}>
       <AICareLogo size={96} style={[styles.logo, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]} />
       <Text style={[styles.title, { color: theme.text }]}>AI Care</Text>
       <Text style={[styles.subtitle, { color: theme.textMuted }]}>Your intelligent laundry care space.</Text>
@@ -61,15 +61,30 @@ export default function AICareScreen() {
           <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo for cautious fabric and care guidance.</Text>
         </Card>
       </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Open Care Label Reader"
+        activeOpacity={0.86}
+        style={styles.secondaryCardPressable}
+        onPress={() => router.push("/care-label-scan" as never)}
+      >
+        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
+            <MaterialIcons name="local-laundry-service" size={24} color={theme.primary} />
+          </View>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Care Label Reader</Text>
+          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Read visible care-label text and symbols for your review.</Text>
+        </Card>
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.primary }]} onPress={() => router.replace("/home")}>
         <Text style={styles.backText}>Back to Home</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, alignItems: "center", paddingHorizontal: 30 },
+  screen: { flexGrow: 1, alignItems: "center", paddingHorizontal: 30 },
   logo: { borderWidth: 1, marginTop: 22 },
   title: { marginTop: 24, fontSize: 30, fontWeight: "700" },
   subtitle: { marginTop: 8, fontSize: 15 },

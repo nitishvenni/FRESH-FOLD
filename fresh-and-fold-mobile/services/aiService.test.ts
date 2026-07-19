@@ -21,7 +21,7 @@ class MockFormData {
 vi.stubGlobal("FormData", MockFormData);
 vi.stubGlobal("fetch", mocks.fetch);
 
-import { AiServiceError, analyzeFabric, analyzeStain } from "./aiService";
+import { AiServiceError, analyzeCareLabel, analyzeFabric, analyzeStain } from "./aiService";
 
 const response = (body: unknown, status = 200, requestId = "fabric_request_123") => ({
   ok: status >= 200 && status < 300,
@@ -115,6 +115,35 @@ describe("Fabric Identification transport", () => {
     expect(mocks.append).toHaveBeenCalledWith(
       "image",
       expect.objectContaining({ uri: "file:///stain.jpg", type: "image/jpeg" })
+    );
+  });
+
+  it("uploads a normalized image to the provider-agnostic care-label endpoint", async () => {
+    mocks.fetch.mockResolvedValue(
+      response({
+        status: "partial",
+        extractedText: "Machine wash",
+        readings: [],
+        unreadableRegions: ["Lower edge"],
+        warnings: [],
+        requestId: "care_label_request_123",
+        requiresUserReview: true,
+      })
+    );
+
+    await analyzeCareLabel({ uri: "file:///care-label.jpg", name: "care-label.jpg", type: "image/jpeg" });
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/ai\/care-label\/analyze$/),
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer mobile-token" },
+        body: expect.any(MockFormData),
+      })
+    );
+    expect(mocks.append).toHaveBeenCalledWith(
+      "image",
+      expect.objectContaining({ uri: "file:///care-label.jpg", type: "image/jpeg" })
     );
   });
 });
