@@ -1,86 +1,18 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
 import { useAppTheme } from "../hooks/useAppTheme";
-import { AiServiceError, parseNaturalLanguageBooking } from "../services/aiService";
-import { AiDevelopmentDiagnostic, toAiDevelopmentDiagnostic } from "../services/aiErrors";
-
-type BookingError = {
-  title: string;
-  message: string;
-  retryable: boolean;
-  diagnostic?: AiDevelopmentDiagnostic;
-};
-
-const isDevelopmentBuild = typeof __DEV__ !== "undefined" && __DEV__;
-
-const errorFrom = (error: unknown): BookingError => {
-  if (error instanceof AiServiceError) {
-    if (error.code === "AI_NOT_CONFIGURED") {
-      return {
-        title: "AI booking unavailable",
-        message: "Natural-language booking is not configured right now. You can continue with Manual Booking.",
-        retryable: false,
-      };
-    }
-    return {
-      title: "Booking request could not finish",
-      message: error.message,
-      retryable: error.retryable,
-      ...(isDevelopmentBuild ? { diagnostic: toAiDevelopmentDiagnostic(error) } : {}),
-    };
-  }
-  return {
-    title: "Booking request could not finish",
-    message: "Please try again or continue with Manual Booking.",
-    retryable: true,
-  };
-};
+import { useNaturalLanguageBookingSubmission } from "../hooks/useNaturalLanguageBookingSubmission";
 
 export default function AiBookingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
-  const abortControllerRef = useRef<AbortController | null>(null);
   const [requestText, setRequestText] = useState("");
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<BookingError | null>(null);
-
-  const submit = async () => {
-    if (processing) return;
-    setError(null);
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    setProcessing(true);
-
-    try {
-      const result = await parseNaturalLanguageBooking(requestText, controller.signal);
-      if (!controller.signal.aborted) {
-        router.replace({
-          pathname: "/ai-booking-review" as never,
-          params: { result: JSON.stringify(result) },
-        });
-      }
-    } catch (requestError) {
-      if (!(requestError instanceof Error && requestError.name === "AbortError")) {
-        setError(errorFrom(requestError));
-      }
-    } finally {
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-        setProcessing(false);
-      }
-    }
-  };
-
-  const cancel = () => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setProcessing(false);
-  };
+  const { processing, error, submit, cancel, clearError, isDevelopmentBuild } = useNaturalLanguageBookingSubmission();
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top + 18 }]}>
@@ -106,7 +38,7 @@ export default function AiBookingScreen() {
           value={requestText}
           onChangeText={(value) => {
             setRequestText(value);
-            setError(null);
+            clearError();
           }}
           placeholder="Example: Wash two shirts and one pair of jeans"
           placeholderTextColor={theme.textMuted}
@@ -125,7 +57,7 @@ export default function AiBookingScreen() {
             </TouchableOpacity>
           </Card>
         ) : (
-          <TouchableOpacity accessibilityRole="button" onPress={() => void submit()} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+          <TouchableOpacity accessibilityRole="button" onPress={() => void submit(requestText)} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
             <MaterialIcons name="auto-awesome" size={20} color="#FFFFFF" />
             <Text style={styles.primaryButtonText}>Create review</Text>
           </TouchableOpacity>

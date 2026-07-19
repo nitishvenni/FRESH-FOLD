@@ -39,6 +39,16 @@
         }
       ],
       [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Fresh & Fold uses your microphone to turn a spoken booking request into text for your review.",
+          "speechRecognitionPermission": "Fresh & Fold uses speech recognition to turn your spoken booking request into editable text.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Fresh & Fold uses your location to auto-fill your pickup and delivery address."

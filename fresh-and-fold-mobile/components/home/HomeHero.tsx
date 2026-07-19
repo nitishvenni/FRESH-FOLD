@@ -8,13 +8,12 @@ import HomeHeader from "./HomeHeader";
 type HomeHeroProps = {
   firstName: string;
   onNotificationsPress: () => void;
-  onSmartScanPress: () => void;
 };
 
 const lightHero = require("../../assets/images/home/laundry-hero-light.png");
 const darkHero = require("../../assets/images/home/laundry-hero-dark.png");
 
-export default function HomeHero({ firstName, onNotificationsPress, onSmartScanPress }: HomeHeroProps) {
+export default function HomeHero({ firstName, onNotificationsPress }: HomeHeroProps) {
   const { theme, isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   // Artwork dimensions — image is absolute, content flows naturally
@@ -94,71 +93,6 @@ export default function HomeHero({ firstName, onNotificationsPress, onSmartScanP
           Smart care for every fabric.{"\n"}Cleaner results, every time.
         </Text>
       </View>
-
-      {/* 4. Smart Scan CTA — THEME AWARE */}
-      <View style={styles.flowContent}>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Smart Scan"
-          style={[styles.scanButton, { borderColor: theme.smartScanBorder }]}
-          activeOpacity={0.88}
-          onPress={onSmartScanPress}
-        >
-          <BlurView
-            intensity={isDark ? 22 : 32}
-            tint={isDark ? "dark" : "light"}
-            style={styles.blurFill}
-          />
-          <LinearGradient
-            pointerEvents="none"
-            colors={[theme.smartScanGradientStart, theme.smartScanGradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.scanGradient}
-          />
-          {/* Subtle inner highlight for glass depth */}
-          <LinearGradient
-            pointerEvents="none"
-            colors={
-              isDark
-                ? ["rgba(79,140,255,0.08)", "rgba(0,0,0,0)"]
-                : ["rgba(255,255,255,0.22)", "rgba(255,255,255,0.05)"]
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.scanGradient}
-          />
-          <View
-            style={[
-              styles.scanIcon,
-              {
-                backgroundColor: theme.smartScanIconBg,
-                borderColor: theme.smartScanIconBorder,
-                ...(isDark ? {} : { ...Platform.select({ android: { elevation: 1 } }) }),
-              },
-            ]}
-          >
-            <MaterialIcons name="document-scanner" size={22} color={theme.smartScanIconColor} />
-          </View>
-          <View style={styles.scanCopy}>
-            <Text style={[styles.scanTitle, { color: theme.smartScanTitle }]}>Smart Scan</Text>
-            <Text style={[styles.scanSubtitle, { color: theme.smartScanSubtitle }]}>AI analyzes your clothes</Text>
-          </View>
-          <View
-            style={[
-              styles.arrow,
-              {
-                backgroundColor: theme.smartScanArrowBg,
-                borderWidth: isDark ? 0 : 1,
-                borderColor: isDark ? "transparent" : "rgba(226,232,240,0.60)",
-                ...(isDark ? {} : { ...Platform.select({ android: { elevation: 3 }, ios: { shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } } }) }),
-              },
-            ]}
-          >
-            <MaterialIcons name="arrow-forward" size={20} color={theme.smartScanArrowColor} />
-          </View>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -222,7 +156,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     maxWidth: "70%",
   },
-  // Smart Scan CTA
   scanButton: {
     height: 60,
     marginTop: 12,

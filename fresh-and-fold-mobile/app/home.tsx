@@ -11,8 +11,10 @@ import { useAuth } from "../context/AuthContext";
 import { useAppTheme } from "../hooks/useAppTheme";
 import useOrders from "../hooks/useOrders";
 import { getMostRelevantActiveOrder } from "../utils/orderStatus";
+import { HOME_AI_ACTION_ROUTES } from "../utils/homeAiActionRoutes";
 import { showToast } from "../utils/toast";
 import HomeHero from "../components/home/HomeHero";
+import HomeAiActionCards from "../components/home/HomeAiActionCards";
 import { CurrentOrderCard, ImpactCard, QuickActions, RecommendationCard } from "../components/home/HomeCards";
 
 const PROFILE_NAME_KEY = "profileName";
@@ -71,7 +73,7 @@ export default function HomeScreen() {
 
   const activeOrder = getMostRelevantActiveOrder(orders);
   const startBooking = () => router.push("/select-service");
-  const openAICare = () => router.push("/ai-care" as never);
+  const openAICare = () => router.push(HOME_AI_ACTION_ROUTES.smartScan as never);
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
@@ -140,10 +142,15 @@ export default function HomeScreen() {
           <HomeHero
             firstName={firstName}
             onNotificationsPress={() => router.push("/profile")}
-            onSmartScanPress={openAICare}
           />
         </Animated.View>
         <Animated.View entering={FadeInDown.delay(70).duration(300)}>
+          <HomeAiActionCards
+            onSmartScanPress={openAICare}
+            onVoiceBookingPress={() => router.push(HOME_AI_ACTION_ROUTES.voiceBooking as never)}
+          />
+        </Animated.View>
+        <Animated.View entering={FadeInDown.delay(120).duration(300)}>
           <QuickActions
             onNewBooking={startBooking}
             onBookings={() => showToast({ type: "info", title: "No booking in progress", message: "Your unfinished booking will appear here when drafts are available." })}
@@ -151,7 +158,7 @@ export default function HomeScreen() {
             onRefer={() => showToast({ type: "info", title: "Refer & Earn is coming soon" })}
           />
         </Animated.View>
-        <Animated.View entering={FadeInDown.delay(120).duration(300)}>
+        <Animated.View entering={FadeInDown.delay(170).duration(300)}>
           <CurrentOrderCard
             order={activeOrder}
             loading={loading}
@@ -166,12 +173,12 @@ export default function HomeScreen() {
           />
         </Animated.View>
         {homeDemoContent.recommendation ? (
-          <Animated.View entering={FadeInDown.delay(170).duration(300)}>
+          <Animated.View entering={FadeInDown.delay(220).duration(300)}>
             <RecommendationCard recommendation={homeDemoContent.recommendation} onPress={startBooking} />
           </Animated.View>
         ) : null}
         {homeDemoContent.impact ? (
-          <Animated.View entering={FadeInDown.delay(220).duration(300)}>
+          <Animated.View entering={FadeInDown.delay(270).duration(300)}>
             <ImpactCard impact={homeDemoContent.impact} />
           </Animated.View>
         ) : null}
