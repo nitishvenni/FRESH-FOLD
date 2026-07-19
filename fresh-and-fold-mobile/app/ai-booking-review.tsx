@@ -15,12 +15,11 @@ import {
 } from "../utils/aiBookingDraft";
 import { allItems, isItemKey } from "../utils/bookingData";
 
-const serviceLabel: Record<"wash" | "dry" | "express", string> = {
-  wash: "Wash & Iron", dry: "Dry Clean", express: "Express",
-};
+const cleaningLabel: Record<"wash" | "dry", string> = { wash: "Wash & Iron", dry: "Dry Clean" };
+const speedLabel: Record<"standard" | "express", string> = { standard: "Standard", express: "Express" };
 
 const slotSet = new Set(["9 AM - 12 PM", "12 PM - 3 PM", "3 PM - 6 PM"]);
-const unresolvedSet = new Set(["items", "quantity", "service", "pickup_date", "pickup_slot", "special_instructions"]);
+const unresolvedSet = new Set(["items", "quantity", "cleaning_service", "speed", "pickup_date", "pickup_slot", "special_instructions"]);
 
 const parseResult = (value: string | string[] | undefined): NaturalLanguageBookingResult | null => {
   if (typeof value !== "string") return null;
@@ -33,12 +32,13 @@ const parseResult = (value: string | string[] | undefined): NaturalLanguageBooki
       (item.quantity === null || (Number.isInteger(item.quantity) && item.quantity > 0)) &&
       typeof item.confidence === "number"
     );
-    const validService = result.service === null || result.service === "wash" || result.service === "dry" || result.service === "express";
+    const validCleaningService = result.cleaningService === null || result.cleaningService === "wash" || result.cleaningService === "dry";
+    const validSpeed = result.speed === null || result.speed === "standard" || result.speed === "express";
     const validSlots = result.pickupSlot === null || slotSet.has(result.pickupSlot);
     const validUnresolved = Array.isArray(result.unresolvedFields) && result.unresolvedFields.every((field) => unresolvedSet.has(field));
     if (
       !["complete", "partial", "no_match"].includes(result.status) || result.source !== "natural_language" ||
-      result.requiresUserReview !== true || !validItems || !validService || !validSlots || !validUnresolved ||
+      result.requiresUserReview !== true || !validItems || !validCleaningService || !validSpeed || !validSlots || !validUnresolved ||
       !Array.isArray(result.warnings) || result.warnings.some((warning) => typeof warning !== "string") ||
       typeof result.requestId !== "string"
     ) return null;
@@ -56,13 +56,15 @@ export default function AiBookingReviewScreen() {
   const result = useMemo(() => parseResult(resultParam), [resultParam]);
   const initialItems = useMemo(() => (result ? createBookingReviewItems(result) : []), [result]);
   const [reviewItems, setReviewItems] = useState<BookingReviewItem[]>(initialItems);
-  const [acceptedService, setAcceptedService] = useState<"wash" | "dry" | "express" | undefined>();
+  const [acceptedCleaningService, setAcceptedCleaningService] = useState<"wash" | "dry" | undefined>();
+  const [acceptedSpeed, setAcceptedSpeed] = useState<"standard" | "express" | undefined>();
   const [showManualItems, setShowManualItems] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     setReviewItems(initialItems);
-    setAcceptedService(undefined);
+    setAcceptedCleaningService(undefined);
+    setAcceptedSpeed(undefined);
     setReviewError(null);
   }, [initialItems]);
 
@@ -80,7 +82,7 @@ export default function AiBookingReviewScreen() {
   };
 
   const continueToBooking = () => {
-    const built = buildNaturalLanguageBookingPrefill(reviewItems, acceptedService);
+    const built = buildNaturalLanguageBookingPrefill(reviewItems, acceptedCleaningService, acceptedSpeed);
     if (built.unresolvedQuantityItemIds.length > 0) {
       setReviewError("Choose a quantity or remove every mapped item with an unclear quantity.");
       return;
@@ -116,8 +118,9 @@ export default function AiBookingReviewScreen() {
           </Card>
 
           <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Service suggestion</Text>
-            {result.service ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Suggested global service: {serviceLabel[result.service]}</Text>{acceptedService === result.service ? <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedService(undefined)}><Text style={[styles.remove, { color: theme.warning }]}>Do not prefill this service</Text></TouchableOpacity> : <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedService(result.service ?? undefined)}><Text style={[styles.accept, { color: theme.primary }]}>Use this service in booking</Text></TouchableOpacity>}</> : <Text style={[styles.copy, { color: theme.textMuted }]}>No single global service could be confirmed. Choose one in booking.</Text>}
+            <Text style={[styles.cardTitle, { color: theme.text }]}>Booking suggestions</Text>
+            {result.cleaningService ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Cleaning suggestion: {cleaningLabel[result.cleaningService]}</Text>{acceptedCleaningService === result.cleaningService ? <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedCleaningService(undefined)}><Text style={[styles.remove, { color: theme.warning }]}>Do not prefill cleaning service</Text></TouchableOpacity> : <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedCleaningService(result.cleaningService ?? undefined)}><Text style={[styles.accept, { color: theme.primary }]}>Use this cleaning service in booking</Text></TouchableOpacity>}</> : <Text style={[styles.copy, { color: theme.textMuted }]}>No cleaning service could be confirmed. Choose one in booking.</Text>}
+            {result.speed ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Speed suggestion: {speedLabel[result.speed]}</Text>{acceptedSpeed === result.speed ? <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedSpeed(undefined)}><Text style={[styles.remove, { color: theme.warning }]}>Do not prefill speed</Text></TouchableOpacity> : <TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedSpeed(result.speed ?? undefined)}><Text style={[styles.accept, { color: theme.primary }]}>Use this speed in booking</Text></TouchableOpacity>}</> : <Text style={[styles.copy, { color: theme.textMuted }]}>No speed could be confirmed. Choose one in booking.</Text>}
           </Card>
 
           <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>

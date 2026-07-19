@@ -315,7 +315,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       pushActivity({
         type: "order",
         title: `Order ${order._id.slice(-6)}`,
-        meta: `${order.service || "Laundry"} is now ${order.status}`,
+        meta: `${order.cleaningService && order.speed ? `${order.cleaningService === "dry" ? "Dry Clean" : "Wash & Iron"} · ${order.speed === "express" ? "Express" : "Standard"}` : order.service || "Laundry"} is now ${order.status}`,
       });
       void fetchOrders();
     });

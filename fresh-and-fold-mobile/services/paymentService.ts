@@ -27,7 +27,8 @@ export type VerifyPaymentResponse = {
 export const reportPaymentFailure = async (payload: {
   addressId: string | string[] | undefined;
   items: Array<{ itemName: string; quantity: number }>;
-  service: string | string[] | undefined;
+  cleaningService: "wash" | "dry";
+  speed: "standard" | "express";
   paymentOrderId?: string;
   paymentId?: string;
   totalAmount?: number;
@@ -40,7 +41,8 @@ export const reportPaymentFailure = async (payload: {
 export const createPaymentOrder = async (payload: {
   addressId: string | string[] | undefined;
   items: Array<{ itemName: string; quantity: number }>;
-  service: string | string[] | undefined;
+  cleaningService: "wash" | "dry";
+  speed: "standard" | "express";
 }) => {
   return api.post<CreatePaymentOrderResponse>("/payments/create-order", payload);
 };
@@ -48,7 +50,8 @@ export const createPaymentOrder = async (payload: {
 export const verifyPayment = async (payload: {
   addressId: string | string[] | undefined;
   items: Array<{ itemName: string; quantity: number }>;
-  service: string | string[] | undefined;
+  cleaningService: "wash" | "dry";
+  speed: "standard" | "express";
   payment: {
     razorpay_payment_id: string;
     razorpay_order_id: string;

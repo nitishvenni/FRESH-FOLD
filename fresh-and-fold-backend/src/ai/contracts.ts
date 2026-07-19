@@ -220,6 +220,9 @@ export const CareLabelAnalysisSchema = ReviewedResultSchema.extend({
 export type CareLabelAnalysis = z.infer<typeof CareLabelAnalysisSchema>;
 
 export const ServiceIdSchema = z.enum(["wash", "dry", "express"]);
+/** Phase G.1 booking dimensions; advisory AI output never carries a price. */
+export const CleaningServiceSchema = z.enum(["wash", "dry"]);
+export const FulfillmentSpeedSchema = z.enum(["standard", "express"]);
 
 export const StainTypeSchema = z.enum([
   "coffee",
@@ -450,7 +453,8 @@ export type FabricAnalysis = z.infer<typeof FabricAnalysisSchema>;
 export const BookingDraftSchema = ReviewedResultSchema.extend({
   source: z.enum(["manual", "smart_scan", "natural_language"]),
   items: z.array(MappedGarmentDetectionSchema).max(30),
-  service: ServiceIdSchema.nullable(),
+  cleaningService: CleaningServiceSchema.nullable(),
+  speed: FulfillmentSpeedSchema.nullable(),
   pickupDate: z.string().date().nullable(),
   pickupSlot: z.string().trim().min(1).max(120).nullable(),
   pickupPreference: z.string().trim().min(1).max(240).nullable(),
@@ -483,7 +487,8 @@ export const PickupSlotSchema = z.enum([
 export const BookingUnresolvedFieldSchema = z.enum([
   "items",
   "quantity",
-  "service",
+  "cleaning_service",
+  "speed",
   "pickup_date",
   "pickup_slot",
   "special_instructions",
@@ -497,7 +502,8 @@ export const NaturalLanguageBookingModelOutputSchema = z
   .object({
     status: NaturalLanguageBookingStatusSchema,
     items: z.array(DetectedGarmentSchema).max(30).optional().default([]),
-    service: ServiceIdSchema.nullable().optional().default(null),
+    cleaningService: CleaningServiceSchema.nullable().optional().default(null),
+    speed: FulfillmentSpeedSchema.nullable().optional().default(null),
     pickupDate: z.string().date().nullable().optional().default(null),
     pickupSlot: PickupSlotSchema.nullable().optional().default(null),
     pickupPreference: z.string().trim().min(1).max(240).nullable().optional().default(null),
@@ -515,7 +521,8 @@ const validateNaturalLanguageBookingResult = (
   value: {
     status: z.infer<typeof NaturalLanguageBookingStatusSchema>;
     items: readonly MappedGarmentDetection[];
-    service: z.infer<typeof ServiceIdSchema> | null;
+    cleaningService: z.infer<typeof CleaningServiceSchema> | null;
+    speed: z.infer<typeof FulfillmentSpeedSchema> | null;
     pickupDate: string | null;
     pickupSlot: z.infer<typeof PickupSlotSchema> | null;
     pickupPreference: string | null;
@@ -529,7 +536,8 @@ const validateNaturalLanguageBookingResult = (
   );
   const hasAnyBookingDetail =
     value.items.length > 0 ||
-    value.service !== null ||
+    value.cleaningService !== null ||
+    value.speed !== null ||
     value.pickupDate !== null ||
     value.pickupSlot !== null ||
     value.pickupPreference !== null ||

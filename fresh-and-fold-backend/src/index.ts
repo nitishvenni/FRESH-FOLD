@@ -29,37 +29,19 @@ import { registerNaturalLanguageBookingRoutes } from "./ai/naturalLanguageBookin
 import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
 import { sendPushNotification } from "./utils/pushNotifications";
 import {
+  buildPaymentContextHash,
+  calculateOrderTotals,
+  CleaningService,
+  FulfillmentSpeed,
+  OrderInputItem,
+} from "./booking/pricing";
+import {
   buildControlledSupportReply,
   buildSystemPrompt,
   detectEscalation,
   detectSupportIntentWithConfidence,
 } from "./support/promptControl";
 
-const PRICING: Record<string, number> = {
-  shirt: 20,
-  tshirt: 18,
-  jeans: 40,
-  trousers: 35,
-  dress: 60,
-  jacket: 90,
-  sweater: 50,
-  shorts: 40,
-  leggings: 45,
-  skirt: 55,
-  kurta: 60,
-  saree: 100,
-  hoodie: 90,
-  bedsheet: 70,
-  pillowcover: 20,
-  towel: 22,
-  curtain: 110,
-  blanket: 140,
-};
-const SERVICE_MULTIPLIER: Record<string, number> = {
-  wash: 1,
-  dry: 2.5,
-  express: 3,
-};
 const DELIVERY_CHARGE = 25;
 const FREE_DELIVERY_THRESHOLD = 299;
 const CURRENCY = "INR";
@@ -74,11 +56,6 @@ const ORDER_STEPS = [
   "Delivered",
 ] as const;
 
-const SERVICE_TURNAROUND: Record<string, string> = {
-  wash: "24-36 hours",
-  dry: "36-48 hours",
-  express: "24 hours",
-};
 
 const MOCK_PAYMENTS = String(process.env.MOCK_PAYMENTS || "").toLowerCase() === "true";
 const mongoUri = String(process.env.MONGO_URI || "").trim();
@@ -293,88 +270,7 @@ const getSupportRelevantOrder = async (userId: string | undefined) => {
   return Order.findOne({ userId }).sort({ createdAt: -1 });
 };
 
-type OrderInputItem = {
-  itemName: string;
-  quantity: number;
-};
-
-const calculateOrderTotals = (items: OrderInputItem[], service: string) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new Error("Items are required");
-  }
-
-  const normalizedService = String(service || "").trim().toLowerCase();
-  const multiplier = SERVICE_MULTIPLIER[normalizedService];
-  if (!multiplier) {
-    throw new Error("Invalid service selected");
-  }
-
-  let subtotal = 0;
-
-  const processedItems = items.map((item) => {
-    const itemName = String(item?.itemName || "").trim().toLowerCase();
-    const quantity = Number(item?.quantity);
-    if (!itemName || !Number.isInteger(quantity) || quantity <= 0) {
-      throw new Error("Invalid item payload");
-    }
-
-    const basePrice = PRICING[itemName];
-    if (!basePrice) {
-      throw new Error(`Unsupported item: ${itemName}`);
-    }
-
-    const finalPrice = Math.round(basePrice * multiplier);
-    const itemTotal = finalPrice * quantity;
-    subtotal += itemTotal;
-
-    return {
-      itemName,
-      quantity,
-      price: finalPrice,
-      itemTotal,
-    };
-  });
-
-  const deliveryCharge = subtotal < FREE_DELIVERY_THRESHOLD ? DELIVERY_CHARGE : 0;
-  const totalAmount = subtotal + deliveryCharge;
-
-  return {
-    service: normalizedService,
-    processedItems,
-    subtotal,
-    deliveryCharge,
-    totalAmount,
-  };
-};
-
 const generatePaymentReceipt = () => `ff_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
-
-const buildPaymentContextHash = (params: {
-  userId: string;
-  addressId: string;
-  service: string;
-  items: Array<{ itemName: string; quantity: number; price: number; itemTotal: number }>;
-  totalAmount: number;
-}) => {
-  const normalizedItems = [...params.items]
-    .sort((a, b) => a.itemName.localeCompare(b.itemName))
-    .map((item) => ({
-      itemName: item.itemName,
-      quantity: item.quantity,
-      price: item.price,
-      itemTotal: item.itemTotal,
-    }));
-
-  const payload = JSON.stringify({
-    userId: params.userId,
-    addressId: params.addressId,
-    service: params.service,
-    items: normalizedItems,
-    totalAmount: params.totalAmount,
-  });
-
-  return crypto.createHash("sha256").update(payload).digest("hex");
-};
 
 const buildExpectedRazorpaySignature = (orderId: string, paymentId: string) =>
   crypto.createHmac("sha256", razorpayKeySecret as string).update(`${orderId}|${paymentId}`).digest("hex");
@@ -846,12 +742,13 @@ app.post("/admin/forgot-password", adminPasswordResetLimiter, async (req, res) =
 
 app.post("/orders/preview", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { items, service } = req.body;
-    const pricing = calculateOrderTotals(items, service);
+    const { items, cleaningService, speed } = req.body;
+    const pricing = calculateOrderTotals(items, cleaningService, speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
 
     res.json({
       success: true,
-      service: pricing.service,
+      cleaningService: pricing.cleaningService,
+      speed: pricing.speed,
       items: pricing.processedItems,
       subtotal: pricing.subtotal,
       deliveryCharge: pricing.deliveryCharge,
@@ -875,7 +772,8 @@ type PaymentVerificationTokenPayload = {
   purpose: "payment_verification";
   userId: string;
   addressId: string;
-  service: string;
+  cleaningService: CleaningService;
+  speed: FulfillmentSpeed;
   totalAmount: number;
   contextHash: string;
   paymentId: string;
@@ -888,15 +786,17 @@ const verifyPaymentForOrder = async (params: {
   userId: string;
   addressId: string;
   items: OrderInputItem[];
-  service: string;
+  cleaningService: unknown;
+  speed: unknown;
   payment: PaymentPayload;
 }) => {
   if (MOCK_PAYMENTS) {
-    const pricing = calculateOrderTotals(params.items, params.service);
+    const pricing = calculateOrderTotals(params.items, params.cleaningService, params.speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
     const contextHash = buildPaymentContextHash({
       userId: params.userId,
       addressId: params.addressId,
-      service: pricing.service,
+      cleaningService: pricing.cleaningService,
+      speed: pricing.speed,
       items: pricing.processedItems,
       totalAmount: pricing.totalAmount,
     });
@@ -927,12 +827,13 @@ const verifyPaymentForOrder = async (params: {
     };
   }
 
-  const pricing = calculateOrderTotals(params.items, params.service);
+  const pricing = calculateOrderTotals(params.items, params.cleaningService, params.speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
   const expectedAmountPaise = Math.round(pricing.totalAmount * 100);
   const contextHash = buildPaymentContextHash({
     userId: params.userId,
     addressId: params.addressId,
-    service: pricing.service,
+    cleaningService: pricing.cleaningService,
+    speed: pricing.speed,
     items: pricing.processedItems,
     totalAmount: pricing.totalAmount,
   });
@@ -959,7 +860,8 @@ const verifyPaymentForOrder = async (params: {
   if (
     gatewayOrder.notes?.userId !== params.userId ||
     gatewayOrder.notes?.addressId !== params.addressId ||
-    gatewayOrder.notes?.service !== pricing.service ||
+    gatewayOrder.notes?.cleaningService !== pricing.cleaningService ||
+    gatewayOrder.notes?.speed !== pricing.speed ||
     gatewayOrder.notes?.contextHash !== contextHash
   ) {
     return {
@@ -1009,7 +911,7 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
       });
     }
 
-    const { addressId, items, service } = req.body;
+    const { addressId, items, cleaningService, speed } = req.body;
     if (!addressId) {
       return res.status(400).json({ message: "Address is required" });
     }
@@ -1022,12 +924,13 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
       return res.status(400).json({ message: "Invalid address" });
     }
 
-    const pricing = calculateOrderTotals(items, service);
+    const pricing = calculateOrderTotals(items, cleaningService, speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
     const receipt = generatePaymentReceipt();
     const contextHash = buildPaymentContextHash({
       userId: String(req.user.userId),
       addressId: String(addressId),
-      service: pricing.service,
+      cleaningService: pricing.cleaningService,
+      speed: pricing.speed,
       items: pricing.processedItems,
       totalAmount: pricing.totalAmount,
     });
@@ -1046,7 +949,8 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
           notes: {
             userId: String(req.user.userId),
             addressId: String(addressId),
-            service: pricing.service,
+            cleaningService: pricing.cleaningService,
+            speed: pricing.speed,
             contextHash,
           },
         });
@@ -1062,7 +966,8 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
         receipt: paymentOrder.receipt,
       },
       pricing: {
-        service: pricing.service,
+        cleaningService: pricing.cleaningService,
+        speed: pricing.speed,
         items: pricing.processedItems,
         subtotal: pricing.subtotal,
         deliveryCharge: pricing.deliveryCharge,
@@ -1078,7 +983,7 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
 
 const handleVerifyPayment = async (req: AuthRequest, res: any) => {
   try {
-    const { addressId, items, service, payment } = req.body;
+    const { addressId, items, cleaningService, speed, payment } = req.body;
 
     if (!addressId) {
       return res.status(400).json({ message: "Invalid order data" });
@@ -1102,7 +1007,8 @@ const handleVerifyPayment = async (req: AuthRequest, res: any) => {
       userId: String(req.user.userId),
       addressId: String(addressId),
       items,
-      service,
+      cleaningService,
+      speed,
       payment,
     });
     if ("error" in verified && verified.error) {
@@ -1123,7 +1029,8 @@ const handleVerifyPayment = async (req: AuthRequest, res: any) => {
       purpose: "payment_verification",
       userId: String(req.user.userId),
       addressId: String(addressId),
-      service: verified.pricing.service,
+      cleaningService: verified.pricing.cleaningService,
+      speed: verified.pricing.speed,
       totalAmount: verified.pricing.totalAmount,
       contextHash: verified.contextHash,
       paymentId: verified.paymentId,
@@ -1160,13 +1067,14 @@ app.post("/payments/verify", authMiddleware, handleVerifyPayment);
 app.post("/payment/verify", authMiddleware, handleVerifyPayment);
 app.post("/payments/failure", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { addressId, items, service, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
+    const { addressId, items, cleaningService, speed, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
 
     await PaymentAttempt.create({
       userId: req.user.userId,
       addressId: addressId || null,
       items: Array.isArray(items) ? items : [],
-      service: String(service || "").trim(),
+      cleaningService: cleaningService === "wash" || cleaningService === "dry" ? cleaningService : null,
+      speed: speed === "standard" || speed === "express" ? speed : null,
       paymentOrderId: String(paymentOrderId || "").trim() || null,
       paymentId: String(paymentId || "").trim() || null,
       totalAmount: Number(totalAmount) || 0,
@@ -1183,13 +1091,14 @@ app.post("/payments/failure", authMiddleware, async (req: AuthRequest, res) => {
 });
 app.post("/payment/failure", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { addressId, items, service, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
+    const { addressId, items, cleaningService, speed, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
 
     await PaymentAttempt.create({
       userId: req.user.userId,
       addressId: addressId || null,
       items: Array.isArray(items) ? items : [],
-      service: String(service || "").trim(),
+      cleaningService: cleaningService === "wash" || cleaningService === "dry" ? cleaningService : null,
+      speed: speed === "standard" || speed === "express" ? speed : null,
       paymentOrderId: String(paymentOrderId || "").trim() || null,
       paymentId: String(paymentId || "").trim() || null,
       totalAmount: Number(totalAmount) || 0,
@@ -1207,7 +1116,7 @@ app.post("/payment/failure", authMiddleware, async (req: AuthRequest, res) => {
 
 app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { addressId, items, service, paymentVerificationToken } = req.body;
+    const { addressId, items, cleaningService, speed, paymentVerificationToken } = req.body;
     if (!addressId) {
       return res.status(400).json({ message: "Invalid order data" });
     }
@@ -1226,7 +1135,7 @@ app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
       return res.status(400).json({ message: "Invalid address" });
     }
 
-    const pricing = calculateOrderTotals(items, service);
+    const pricing = calculateOrderTotals(items, cleaningService, speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
     let tokenPayload: PaymentVerificationTokenPayload;
     try {
       tokenPayload = jwt.verify(
@@ -1243,7 +1152,8 @@ app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
     const contextHash = buildPaymentContextHash({
       userId: String(req.user.userId),
       addressId: String(addressId),
-      service: pricing.service,
+      cleaningService: pricing.cleaningService,
+      speed: pricing.speed,
       items: pricing.processedItems,
       totalAmount: pricing.totalAmount,
     });
@@ -1252,7 +1162,8 @@ app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
       tokenPayload.purpose !== "payment_verification" ||
       tokenPayload.userId !== String(req.user.userId) ||
       tokenPayload.addressId !== String(addressId) ||
-      tokenPayload.service !== pricing.service ||
+      tokenPayload.cleaningService !== pricing.cleaningService ||
+      tokenPayload.speed !== pricing.speed ||
       tokenPayload.totalAmount !== pricing.totalAmount ||
       tokenPayload.contextHash !== contextHash
     ) {
@@ -1275,7 +1186,8 @@ app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
     const order = new Order({
       userId: req.user.userId,
       addressId,
-      service: pricing.service,
+      cleaningService: pricing.cleaningService,
+      speed: pricing.speed,
       items: pricing.processedItems,
       deliveryCharge: pricing.deliveryCharge,
       totalAmount: pricing.totalAmount,
@@ -1385,12 +1297,8 @@ app.post("/support/query", authMiddleware, supportQueryLimiter, async (req: Auth
       });
     }
 
-    const servicesList = [
-      "Wash",
-      "Dry Clean",
-      "Express",
-    ].join(", ");
-    const pricingRule = "Item-wise pricing with service multipliers (wash x1.0, dry x2.5, express x3.0).";
+    const servicesList = ["Wash & Iron", "Dry Clean", "Standard", "Express"].join(", ");
+    const pricingRule = "Item-wise pricing uses cleaning multipliers (wash x1.0, dry x2.5) and speed multipliers (standard x1.0, express x1.5).";
     const deliveryPolicy = "Delivery is free for orders >= Rs.299, otherwise Rs.25.";
     const workingHours = "Daily 8:00 AM - 9:00 PM.";
 
@@ -1407,11 +1315,7 @@ app.post("/support/query", authMiddleware, supportQueryLimiter, async (req: Auth
       pricingRule,
       deliveryPolicy,
       workingHours,
-      serviceTurnaround: {
-        wash: SERVICE_TURNAROUND.wash,
-        dry: SERVICE_TURNAROUND.dry,
-        express: SERVICE_TURNAROUND.express,
-      },
+      serviceTurnaround: { wash: "24-36 hours", dry: "36-48 hours", express: "24 hours" },
     });
 
     await SupportInteraction.create({

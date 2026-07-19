@@ -9,7 +9,7 @@ import PaymentMethodCard from "../components/PaymentMethodCard";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
-import { calculateSubtotal, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD } from "../utils/pricing";
+import { calculateSubtotal, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD, getNormalizedCleaningService, getNormalizedSpeed } from "../utils/pricing";
 import { createOrder, getOrderPreview, getOrders } from "../services/orderService";
 import { createPaymentOrder, reportPaymentFailure, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
@@ -33,7 +33,9 @@ export default function Payment() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
-  const { service, items, date, slot, addressId } = useLocalSearchParams();
+  const { cleaningService: routeCleaningService, speed: routeSpeed, items, date, slot, addressId } = useLocalSearchParams();
+  const cleaningService = getNormalizedCleaningService(routeCleaningService);
+  const speed = getNormalizedSpeed(routeSpeed);
 
   const parsedItems = useMemo<Record<string, number>>(
     () => (items ? JSON.parse(items as string) : {}),
@@ -97,7 +99,7 @@ export default function Payment() {
     });
   };
 
-  const fallbackSubtotal = calculateSubtotal(parsedItems, service);
+  const fallbackSubtotal = calculateSubtotal(parsedItems, cleaningService, speed);
   const fallbackDelivery =
     fallbackSubtotal < FREE_DELIVERY_THRESHOLD ? DELIVERY_CHARGE : 0;
   const [backendTotal, setBackendTotal] = useState<number>(fallbackSubtotal + fallbackDelivery);
@@ -113,7 +115,8 @@ export default function Payment() {
       const data = await Promise.race([
         getOrderPreview({
             items: getOrderItems(),
-            service,
+            cleaningService,
+            speed,
         }),
         new Promise<{
           success: boolean;
@@ -138,7 +141,8 @@ export default function Payment() {
         createOrder({
           addressId,
           items: getOrderItems(),
-          service,
+          cleaningService,
+          speed,
           paymentVerificationToken,
         })
       );
@@ -167,7 +171,8 @@ export default function Payment() {
       await reportPaymentFailure({
         addressId,
         items: getOrderItems(),
-        service,
+        cleaningService,
+        speed,
         paymentOrderId: details.paymentOrderId,
         paymentId: details.paymentId,
         totalAmount: backendTotal,
@@ -186,7 +191,8 @@ export default function Payment() {
     const data = await createPaymentOrder({
       addressId,
       items: getOrderItems(),
-      service,
+      cleaningService,
+      speed,
     });
 
     if (__DEV__) {
@@ -274,7 +280,8 @@ export default function Payment() {
       verifyPayment({
         addressId,
         items: getOrderItems(),
-        service,
+        cleaningService,
+        speed,
         payment: {
           razorpay_payment_id: paymentResult.razorpay_payment_id,
           razorpay_order_id: paymentResult.razorpay_order_id,

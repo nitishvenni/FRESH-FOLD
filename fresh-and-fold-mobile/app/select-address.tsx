@@ -43,7 +43,7 @@ type Address = {
 
 export default function SelectAddress() {
   const router = useRouter();
-  const { service, items, date, slot } = useLocalSearchParams();
+  const { cleaningService, speed, items, date, slot } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
 
@@ -198,7 +198,7 @@ export default function SelectAddress() {
                 void triggerImpactHaptic();
                 router.push({
                   pathname: "/add-address",
-                  params: { service, items, date, slot, addressId: address._id },
+                  params: { cleaningService, speed, items, date, slot, addressId: address._id },
                 });
               }}
             />
@@ -218,7 +218,7 @@ export default function SelectAddress() {
             void triggerImpactHaptic();
             router.push({
               pathname: "/add-address",
-              params: { service, items, date, slot },
+              params: { cleaningService, speed, items, date, slot },
             });
           }}
         >
@@ -262,7 +262,8 @@ export default function SelectAddress() {
               router.push({
                 pathname: "/order-summary",
                 params: {
-                  service,
+                  cleaningService,
+                  speed,
                   items,
                   date,
                   slot,

@@ -125,7 +125,7 @@ export default function AddAddress() {
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
   const params = useLocalSearchParams();
-  const { service, items, date, slot } = params;
+  const { cleaningService, speed, items, date, slot } = params;
   const editAddressId = asStringParam(params.addressId);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -460,7 +460,7 @@ export default function AddAddress() {
       });
       router.replace({
         pathname: "/select-address",
-        params: { service, items, date, slot },
+        params: { cleaningService, speed, items, date, slot },
       });
     } catch (error) {
       handleError(error);

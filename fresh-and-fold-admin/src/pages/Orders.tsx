@@ -3,7 +3,7 @@ import { glassCard, inputStyle, selectStyle, mutedTextStyle, buttonStyle } from 
 import { useAdminData } from "../admin/AdminContext";
 import OrderDrawer from "../components/OrderDrawer";
 import OrderTable from "../components/OrderTable";
-import type { Order } from "../admin/types";
+import { getOrderServiceLabel, type Order } from "../admin/types";
 import { X, Search } from "lucide-react";
 
 export default function OrdersPage() {
@@ -14,7 +14,7 @@ export default function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState("All");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  const availableServices = useMemo(() => Array.from(new Set(orders.map((o) => o.service).filter(Boolean))), [orders]);
+  const availableServices = useMemo(() => Array.from(new Set(orders.map(getOrderServiceLabel).filter(Boolean))), [orders]);
   const availablePaymentStatuses = useMemo(() => Array.from(new Set(orders.map((o) => o.paymentStatus).filter(Boolean))), [orders]);
 
   const filteredOrders = useMemo(() => {
@@ -23,7 +23,7 @@ export default function OrdersPage() {
       const matchesQuery =
         !normalizedSearch ||
         order._id.toLowerCase().includes(normalizedSearch) ||
-        String(order.service || "").toLowerCase().includes(normalizedSearch) ||
+        getOrderServiceLabel(order).toLowerCase().includes(normalizedSearch) ||
         String(order.mobile || "").includes(normalizedSearch);
 
       const matchesStatus =
@@ -34,7 +34,7 @@ export default function OrdersPage() {
           ["Picked Up", "Washing", "Ironing", "Out for Delivery"].includes(order.status)) ||
         (statusFilter === "Delivered" && order.status === "Delivered");
 
-      const matchesService = serviceFilter === "All" || order.service === serviceFilter;
+      const matchesService = serviceFilter === "All" || getOrderServiceLabel(order) === serviceFilter;
       const matchesPayment = paymentFilter === "All" || order.paymentStatus === paymentFilter;
 
       return matchesQuery && matchesStatus && matchesService && matchesPayment;

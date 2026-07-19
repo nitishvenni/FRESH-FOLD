@@ -20,7 +20,19 @@ const orderSchema = new mongoose.Schema(
         itemTotal: Number,
       },
     ],
+    // Legacy orders used this flattened field. New orders persist the two
+    // canonical fields below and never rewrite historical documents.
     service: String,
+    cleaningService: {
+      type: String,
+      enum: ["wash", "dry"],
+      default: null,
+    },
+    speed: {
+      type: String,
+      enum: ["standard", "express"],
+      default: null,
+    },
     deliveryCharge: Number,
     totalAmount: Number,
     paymentId: {

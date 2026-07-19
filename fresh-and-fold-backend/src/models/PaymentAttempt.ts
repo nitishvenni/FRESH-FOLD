@@ -16,6 +16,16 @@ const paymentAttemptSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    cleaningService: {
+      type: String,
+      enum: ["wash", "dry"],
+      default: null,
+    },
+    speed: {
+      type: String,
+      enum: ["standard", "express"],
+      default: null,
+    },
     items: [
       {
         itemName: String,

@@ -197,7 +197,10 @@ export default function OrderHistory() {
 
               const reorderItems = buildReorderItems(item.items);
 
-              if (!item.service || Object.keys(reorderItems).length === 0) {
+              const legacyCleaningService = item.service === "wash" || item.service === "dry" ? item.service : undefined;
+              const cleaningService = item.cleaningService || legacyCleaningService;
+              const speed = item.speed || (legacyCleaningService ? "standard" : undefined);
+              if (!cleaningService || !speed || Object.keys(reorderItems).length === 0) {
                 showToast({
                   type: "error",
                   title: "Reorder unavailable",
@@ -207,13 +210,14 @@ export default function OrderHistory() {
               }
 
               // SAFE REORDER FLOW:
-              // Extract service and items ONLY.
+              // Extract canonical service dimensions and items ONLY.
               // Push to /schedule-basic to force the user to pick a new, valid date/time.
               // This strictly prevents booking expired slots and ensures current pricing.
               router.push({
                 pathname: "/schedule-basic",
                 params: {
-                  service: item.service,
+                  cleaningService,
+                  speed,
                   items: JSON.stringify(reorderItems),
                 },
               });

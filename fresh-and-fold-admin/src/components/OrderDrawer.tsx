@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { buttonStyle, mutedTextStyle, statusBadgeBase, getOrderStatusStyle } from "../admin/styles";
-import type { Order } from "../admin/types";
+import { getOrderServiceLabel, type Order } from "../admin/types";
 
 function DrawerRow({ label, value }: { label: string; value: string }) {
   return (
@@ -81,7 +81,7 @@ export default function OrderDrawer({
 
             <div style={{ display: "grid", gap: 14, padding: 18, borderRadius: 18, background: "rgba(255,255,255,0.04)" }}>
               <DrawerRow label="Customer Phone" value={order.mobile || "-"} />
-              <DrawerRow label="Service" value={order.service || "Laundry"} />
+              <DrawerRow label="Service" value={getOrderServiceLabel(order)} />
               <DrawerRow label="Total" value={`Rs.${order.totalAmount}`} />
               <DrawerRow label="Payment Ref" value={order.paymentId || "-"} />
               <DrawerRow label="Payment Order" value={order.paymentOrderId || "-"} />

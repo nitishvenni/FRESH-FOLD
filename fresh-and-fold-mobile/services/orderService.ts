@@ -5,6 +5,8 @@ export type OrderRecord = {
   status: string;
   totalAmount?: number;
   createdAt?: string;
+  cleaningService?: "wash" | "dry";
+  speed?: "standard" | "express";
   service?: string;
   items?: OrderItemPayload[];
   addressId?:
@@ -46,7 +48,8 @@ export const getOrders = async () => {
 
 export const getOrderPreview = async (payload: {
   items: OrderItemPayload[];
-  service: string | string[] | undefined;
+  cleaningService: "wash" | "dry";
+  speed: "standard" | "express";
 }) => {
   return api.post<OrderPreviewResponse>("/orders/preview", payload);
 };
@@ -54,7 +57,8 @@ export const getOrderPreview = async (payload: {
 export const createOrder = async (payload: {
   addressId: string | string[] | undefined;
   items: OrderItemPayload[];
-  service: string | string[] | undefined;
+  cleaningService: "wash" | "dry";
+  speed: "standard" | "express";
   paymentVerificationToken: string;
 }) => {
   return api.post<CreateOrderResponse>("/orders", payload);

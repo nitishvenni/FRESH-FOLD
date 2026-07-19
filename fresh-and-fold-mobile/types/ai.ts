@@ -40,7 +40,8 @@ export type BookingDraft = {
   requiresUserReview: true;
   source: "manual" | "smart_scan" | "natural_language";
   items: MappedGarmentDetection[];
-  service: "wash" | "dry" | "express" | null;
+  cleaningService: "wash" | "dry" | null;
+  speed: "standard" | "express" | null;
   pickupDate: string | null;
   pickupSlot: string | null;
   pickupPreference: string | null;
@@ -53,7 +54,7 @@ export type NaturalLanguageBookingResult = BookingDraft & {
   source: "natural_language";
   pickupSlot: "9 AM - 12 PM" | "12 PM - 3 PM" | "3 PM - 6 PM" | null;
   unresolvedFields: Array<
-    "items" | "quantity" | "service" | "pickup_date" | "pickup_slot" | "special_instructions"
+    "items" | "quantity" | "cleaning_service" | "speed" | "pickup_date" | "pickup_slot" | "special_instructions"
   >;
 };
 
@@ -81,6 +82,15 @@ export type NaturalLanguageBookingPrefill = {
   source: "natural_language";
   items: Partial<Record<ItemKey, number>>;
   service?: "wash" | "dry" | "express";
+};
+
+/** V3 carries only independently user-accepted Phase G.1 booking dimensions. */
+export type NaturalLanguageBookingPrefillV3 = {
+  version: 3;
+  source: "natural_language";
+  items: Partial<Record<ItemKey, number>>;
+  cleaningService?: "wash" | "dry";
+  speed?: "standard" | "express";
 };
 
 export type GarmentRecognitionResult = {

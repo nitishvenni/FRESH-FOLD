@@ -7,14 +7,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
 import ItemCard from "../components/ItemCard";
 import { useAppTheme } from "../hooks/useAppTheme";
-import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
+import { calculateSubtotal, getItemPriceForService, getNormalizedCleaningService, getNormalizedSpeed } from "../utils/pricing";
 import { clothingItems, homeItems, initialItems, ItemKey, ItemState } from "../utils/bookingData";
 
 
 
 export default function SelectItems() {
   const router = useRouter();
-  const { service } = useLocalSearchParams();
+  const { cleaningService: routeCleaningService, speed: routeSpeed } = useLocalSearchParams();
+  const cleaningService = getNormalizedCleaningService(routeCleaningService);
+  const speed = getNormalizedSpeed(routeSpeed);
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
   const [items, setItems] = useState<ItemState>(initialItems);
@@ -27,7 +29,7 @@ export default function SelectItems() {
   };
 
   const totalItems = Object.values(items).reduce((sum, qty) => sum + qty, 0);
-  const totalAmount = calculateSubtotal(items, service);
+  const totalAmount = calculateSubtotal(items, cleaningService, speed);
 
   const renderSection = (
     title: string,
@@ -49,7 +51,7 @@ export default function SelectItems() {
           item={{
             key: item.key,
             name: item.name,
-            price: getItemPriceForService(item.key, service),
+            price: getItemPriceForService(item.key, cleaningService, speed),
           }}
           quantity={items[item.key]}
           onAdd={() => updateQty(item.key, 1)}
@@ -84,7 +86,7 @@ export default function SelectItems() {
           <View style={styles.infoCopy}>
             <Text style={[styles.infoTitle, { color: theme.textMuted }]}>Service selected</Text>
             <Text style={[styles.infoText, { color: theme.text }]}>
-              {String(service || "Laundry").replace(/^\w/, (char) => char.toUpperCase())}
+              {cleaningService === "dry" ? "Dry Clean" : "Wash & Iron"} · {speed === "express" ? "Express" : "Standard"}
             </Text>
           </View>
         </Card>
@@ -110,7 +112,8 @@ export default function SelectItems() {
             router.push({
               pathname: "/schedule-basic",
               params: {
-                service,
+                cleaningService,
+                speed,
                 items: JSON.stringify(items),
                 total: totalAmount,
               },

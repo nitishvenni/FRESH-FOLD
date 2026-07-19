@@ -5,7 +5,7 @@ import { Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View
 import { AIRecommendation, ImpactMetrics } from "../../constants/homeContent";
 import { useAppTheme } from "../../hooks/useAppTheme";
 import { OrderRecord } from "../../services/orderService";
-import { getHomeOrderStatus, getOrderItemCount, HOME_ORDER_STEPS } from "../../utils/orderStatus";
+import { getHomeOrderStatus, getOrderItemCount, getOrderServiceLabel, HOME_ORDER_STEPS } from "../../utils/orderStatus";
 
 type QuickActionsProps = {
   onNewBooking: () => void;
@@ -243,7 +243,7 @@ export function CurrentOrderCard({ order, loading, error, onTrack, onNewBooking,
           <Text style={[styles.orderEyebrow, { color: theme.textMuted }]}>CURRENT ORDER</Text>
           <Text style={[styles.orderId, { color: theme.text }]}>Order #{order._id.slice(-6).toUpperCase()}</Text>
           <Text style={[styles.orderMeta, { color: theme.textMuted }]} numberOfLines={1}>
-            {order.service || "Laundry service"}{itemCount ? `  •  ${itemCount} items` : ""}
+            {getOrderServiceLabel(order)}{itemCount ? `  •  ${itemCount} items` : ""}
           </Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: theme.primarySoft }]}>

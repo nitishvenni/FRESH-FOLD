@@ -12,7 +12,7 @@ import {
   tdStyle,
   thStyle,
 } from "../admin/styles";
-import type { Order } from "../admin/types";
+import { getOrderServiceLabel, type Order } from "../admin/types";
 
 export default function OrderTable({
   orders,
@@ -87,7 +87,7 @@ export default function OrderTable({
 	            >
 	              <td style={{ ...tdStyle, fontFamily: "monospace", color: "var(--text-secondary)" }}>#{order._id.slice(-6)}</td>
 	              <td style={tdStyle}>{order.mobile || "-"}</td>
-	              <td style={tdStyle}>{order.service || "-"}</td>
+              <td style={tdStyle}>{getOrderServiceLabel(order)}</td>
 	              <td style={{ ...tdStyle, fontWeight: 600 }}>₹{order.totalAmount}</td>
               <td style={tdStyle}>
 	                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

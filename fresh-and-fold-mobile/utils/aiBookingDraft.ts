@@ -3,6 +3,7 @@ import type {
   BookingReviewItem,
   GarmentRecognitionResult,
   NaturalLanguageBookingPrefill,
+  NaturalLanguageBookingPrefillV3,
   NaturalLanguageBookingResult,
   SmartScanBookingPrefill,
 } from "../types/ai";
@@ -34,6 +35,8 @@ export const SmartScanBookingPrefillSchema = z
   .strict();
 
 const ServiceIdSchema = z.enum(["wash", "dry", "express"]);
+const CleaningServiceSchema = z.enum(["wash", "dry"]);
+const FulfillmentSpeedSchema = z.enum(["standard", "express"]);
 
 /** Phase G's compact reviewed route state; V1 Smart Scan remains unchanged. */
 export const NaturalLanguageBookingPrefillSchema = z
@@ -59,6 +62,19 @@ export const NaturalLanguageBookingPrefillSchema = z
 const AnyAiBookingPrefillSchema = z.union([
   SmartScanBookingPrefillSchema,
   NaturalLanguageBookingPrefillSchema,
+  z.object({
+    version: z.literal(3),
+    source: z.literal("natural_language"),
+    items: z.record(z.string(), PositiveQuantitySchema).superRefine((items, context) => {
+      for (const key of Object.keys(items)) if (!isItemKey(key)) context.addIssue({ code: "custom", message: "Unsupported catalog item." });
+    }),
+    cleaningService: CleaningServiceSchema.optional(),
+    speed: FulfillmentSpeedSchema.optional(),
+  }).strict().superRefine((prefill, context) => {
+    if (Object.keys(prefill.items).length === 0 && !prefill.cleaningService && !prefill.speed) {
+      context.addIssue({ code: "custom", message: "A reviewed item or booking choice is required." });
+    }
+  }),
 ]);
 
 const isPositiveQuantity = (value: unknown): value is number =>
@@ -153,14 +169,15 @@ const buildCompactReviewedItems = (reviewItems: BookingReviewItem[]) =>
   }, {});
 
 export type NaturalLanguagePrefillBuildResult = {
-  prefill: NaturalLanguageBookingPrefill | null;
+  prefill: NaturalLanguageBookingPrefillV3 | null;
   unresolvedQuantityItemIds: string[];
 };
 
-/** Builds Phase G's V2 payload only from reviewed items and an accepted service. */
+/** Builds Phase G.1's V3 payload only from reviewed items and accepted dimensions. */
 export const buildNaturalLanguageBookingPrefill = (
   reviewItems: BookingReviewItem[],
-  acceptedService?: NaturalLanguageBookingPrefill["service"]
+  acceptedCleaningService?: NaturalLanguageBookingPrefillV3["cleaningService"],
+  acceptedSpeed?: NaturalLanguageBookingPrefillV3["speed"]
 ): NaturalLanguagePrefillBuildResult => {
   const unresolvedQuantityItemIds = reviewItems
     .filter((item) => !item.removed && item.catalogItemId && !isPositiveQuantity(item.quantity))
@@ -171,24 +188,25 @@ export const buildNaturalLanguageBookingPrefill = (
   }
 
   const items = buildCompactReviewedItems(reviewItems);
-  if (Object.keys(items).length === 0 && !acceptedService) {
+  if (Object.keys(items).length === 0 && !acceptedCleaningService && !acceptedSpeed) {
     return { prefill: null, unresolvedQuantityItemIds: [] };
   }
 
-  const parsed = NaturalLanguageBookingPrefillSchema.safeParse({
-    version: 2,
+  const parsed = AnyAiBookingPrefillSchema.safeParse({
+    version: 3,
     source: "natural_language",
     items,
-    ...(acceptedService ? { service: acceptedService } : {}),
+    ...(acceptedCleaningService ? { cleaningService: acceptedCleaningService } : {}),
+    ...(acceptedSpeed ? { speed: acceptedSpeed } : {}),
   });
 
   return parsed.success
-    ? { prefill: parsed.data as NaturalLanguageBookingPrefill, unresolvedQuantityItemIds: [] }
+    ? { prefill: parsed.data as NaturalLanguageBookingPrefillV3, unresolvedQuantityItemIds: [] }
     : { prefill: null, unresolvedQuantityItemIds: [] };
 };
 
-export const serializeNaturalLanguageBookingPrefill = (prefill: NaturalLanguageBookingPrefill): string =>
-  JSON.stringify(NaturalLanguageBookingPrefillSchema.parse(prefill));
+export const serializeNaturalLanguageBookingPrefill = (prefill: NaturalLanguageBookingPrefillV3): string =>
+  JSON.stringify(AnyAiBookingPrefillSchema.parse(prefill));
 
 /** Validates the complete route payload. Invalid state is never partially applied. */
 export const hydrateSmartScanBookingPrefill = (
@@ -208,7 +226,8 @@ export const hydrateSmartScanBookingPrefill = (
 
 export type HydratedAiBookingPrefill = {
   items: ItemState;
-  service?: "wash" | "dry" | "express";
+  cleaningService?: "wash" | "dry";
+  speed?: "standard" | "express";
 };
 
 /** Validates either approved compact version before applying it to booking controls. */
@@ -221,8 +240,18 @@ export const hydrateAiBookingPrefill = (
     if (!parsed.success) return null;
     return {
       items: { ...initialItems, ...parsed.data.items },
-      ...(parsed.data.source === "natural_language" && parsed.data.service
-        ? { service: parsed.data.service }
+      ...(parsed.data.source === "natural_language" && parsed.data.version === 2
+        ? parsed.data.service === "express"
+          ? { speed: "express" as const }
+          : parsed.data.service
+            ? { cleaningService: parsed.data.service, speed: "standard" as const }
+            : {}
+        : {}),
+      ...(parsed.data.source === "natural_language" && parsed.data.version === 3
+        ? {
+            ...(parsed.data.cleaningService ? { cleaningService: parsed.data.cleaningService } : {}),
+            ...(parsed.data.speed ? { speed: parsed.data.speed } : {}),
+          }
         : {}),
     };
   } catch {

@@ -24,7 +24,7 @@ const isPastPickupDate = (date: string): boolean => date < todayIsoDate();
 /**
  * Turns type-safe provider output into an advisory reviewed draft. It only
  * removes unsafe/invalid scheduling values or downgrades certainty; it never
- * invents a catalog ID, quantity, service, date, slot, or instruction.
+ * invents a catalog ID, quantity, booking service, speed, date, slot, or instruction.
  */
 export const normalizeNaturalLanguageBookingOutput = (
   output: NaturalLanguageBookingModelOutput
@@ -35,7 +35,8 @@ export const normalizeNaturalLanguageBookingOutput = (
       warnings: output.warnings,
       source: "natural_language" as const,
       items: [],
-      service: null,
+      cleaningService: null,
+      speed: null,
       pickupDate: null,
       pickupSlot: null,
       pickupPreference: null,
@@ -71,7 +72,8 @@ export const normalizeNaturalLanguageBookingOutput = (
     warnings: output.warnings,
     source: "natural_language" as const,
     items,
-    service: output.service,
+    cleaningService: output.cleaningService,
+    speed: output.speed,
     pickupDate,
     pickupSlot: output.pickupSlot,
     pickupPreference: output.pickupPreference,

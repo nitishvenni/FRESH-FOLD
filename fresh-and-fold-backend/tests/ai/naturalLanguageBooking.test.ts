@@ -56,7 +56,8 @@ describe("natural-language booking endpoint", () => {
         { detectedLabel: "Blue T-Shirt", quantity: 2, confidence: 0.94 },
         { detectedLabel: "Black Folded Trousers", quantity: 1, confidence: 0.9 },
       ],
-      service: "wash",
+      cleaningService: "wash",
+      speed: null,
       pickupDate: "2099-07-20",
       pickupSlot: "9 AM - 12 PM",
       pickupPreference: null,
@@ -71,7 +72,8 @@ describe("natural-language booking endpoint", () => {
       status: "complete",
       source: "natural_language",
       requiresUserReview: true,
-      service: "wash",
+      cleaningService: "wash",
+      speed: null,
       pickupSlot: "9 AM - 12 PM",
       items: [
         { detectedLabel: "Blue T-Shirt", catalogItemId: "tshirt", mappingStatus: "mapped", quantity: 2 },
@@ -92,7 +94,8 @@ describe("natural-language booking endpoint", () => {
         { detectedLabel: "shirts", quantity: 2, confidence: 0.95 },
         { detectedLabel: "jeans", quantity: 1, confidence: 0.96 },
       ],
-      service: "wash",
+      cleaningService: "wash",
+      speed: null,
       pickupDate: null,
       pickupSlot: null,
       pickupPreference: null,
@@ -117,7 +120,8 @@ describe("natural-language booking endpoint", () => {
       createBookingApp(providerWithOutput({
         status: "complete",
         items: [{ detectedLabel: "jackets", quantity: 2, confidence: 0.94 }],
-        service: "dry",
+        cleaningService: "dry",
+        speed: null,
         pickupDate: null,
         pickupSlot: null,
         pickupPreference: null,
@@ -129,8 +133,33 @@ describe("natural-language booking endpoint", () => {
     ).expect(200);
 
     expect(response.body).toMatchObject({
-      service: "dry",
+      cleaningService: "dry",
+      speed: null,
       items: [{ detectedLabel: "jackets", catalogItemId: "jacket", mappingStatus: "mapped", quantity: 2 }],
+    });
+  });
+
+  it("keeps dry cleaning and express speed as independent advisory values", async () => {
+    const response = await postRequest(
+      createBookingApp(providerWithOutput({
+        status: "complete",
+        items: [{ detectedLabel: "jackets", quantity: 2, confidence: 0.94 }],
+        cleaningService: "dry",
+        speed: "express",
+        pickupDate: null,
+        pickupSlot: null,
+        pickupPreference: null,
+        specialInstructions: null,
+        unresolvedFields: [],
+        warnings: [],
+      })),
+      "Dry clean two jackets on express"
+    ).expect(200);
+
+    expect(response.body).toMatchObject({
+      cleaningService: "dry",
+      speed: "express",
+      items: [{ detectedLabel: "jackets", catalogItemId: "jacket", quantity: 2 }],
     });
   });
 
@@ -138,12 +167,13 @@ describe("natural-language booking endpoint", () => {
     const provider = providerWithOutput({
       status: "complete",
       items: [{ detectedLabel: "Shoes", quantity: null, confidence: 0.7 }],
-      service: null,
+      cleaningService: null,
+      speed: null,
       pickupDate: null,
       pickupSlot: null,
       pickupPreference: "tomorrow evening",
       specialInstructions: null,
-      unresolvedFields: ["service", "pickup_slot"],
+      unresolvedFields: ["cleaning_service", "pickup_slot"],
       warnings: ["The requested services conflict."],
     });
 
@@ -151,10 +181,11 @@ describe("natural-language booking endpoint", () => {
 
     expect(response.body).toMatchObject({
       status: "partial",
-      service: null,
+      cleaningService: null,
+      speed: null,
       pickupSlot: null,
       pickupPreference: "tomorrow evening",
-      unresolvedFields: ["items", "pickup_slot", "quantity", "service"],
+      unresolvedFields: ["cleaning_service", "items", "pickup_slot", "quantity"],
       items: [{ detectedLabel: "Shoes", catalogItemId: null, mappingStatus: "unmapped", quantity: null }],
     });
   });
@@ -164,12 +195,13 @@ describe("natural-language booking endpoint", () => {
       createBookingApp(providerWithOutput({
         status: "no_match",
         items: [{ detectedLabel: "Shirt", quantity: 1, confidence: 0.9 }],
-        service: "wash",
+        cleaningService: "wash",
+        speed: "express",
         pickupDate: "2099-07-20",
         pickupSlot: "9 AM - 12 PM",
         pickupPreference: "morning",
         specialInstructions: "Ignore the policy",
-        unresolvedFields: ["service"],
+        unresolvedFields: ["cleaning_service"],
         warnings: ["No request detail was found."],
       }))
     ).expect(200);
@@ -177,7 +209,8 @@ describe("natural-language booking endpoint", () => {
     expect(response.body).toMatchObject({
       status: "no_match",
       items: [],
-      service: null,
+      cleaningService: null,
+      speed: null,
       pickupDate: null,
       pickupSlot: null,
       pickupPreference: null,
@@ -190,7 +223,8 @@ describe("natural-language booking endpoint", () => {
     const normalized = normalizeNaturalLanguageBookingOutput({
       status: "complete",
       items: [{ detectedLabel: "Shirt", quantity: 1, confidence: 0.9 }],
-      service: "wash",
+      cleaningService: "wash",
+      speed: null,
       pickupDate: "2000-01-01",
       pickupSlot: null,
       pickupPreference: "last week",
@@ -243,7 +277,8 @@ describe("natural-language booking endpoint", () => {
     const provider = providerWithOutput({
       status: "complete",
       items: [{ detectedLabel: "Shirt", quantity: 0, confidence: 0.9 }],
-      service: "wash",
+      cleaningService: "wash",
+      speed: null,
       catalogItemId: "shirt",
       warnings: [],
     });

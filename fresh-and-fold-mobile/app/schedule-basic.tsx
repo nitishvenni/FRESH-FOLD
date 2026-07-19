@@ -36,7 +36,7 @@ const slots = [
 
 export default function ScheduleBasic() {
   const router = useRouter();
-  const { service, items } = useLocalSearchParams();
+  const { cleaningService, speed, items } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -50,7 +50,8 @@ export default function ScheduleBasic() {
     router.push({
       pathname: "/select-address",
       params: {
-        service,
+        cleaningService,
+        speed,
         items,
         date: selectedDate,
         slot: selectedSlot,

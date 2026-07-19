@@ -41,7 +41,7 @@ export default function SelectService() {
   const { theme, isDark } = useAppTheme();
 
   const [selectedSpeed, setSelectedSpeed] = useState<ServiceSpeed>("standard");
-  const [selectedType, setSelectedType] = useState<ServiceType>("wash");
+  const [selectedCleaningService, setSelectedCleaningService] = useState<ServiceType>("wash");
   const [selectedCategory, setSelectedCategory] = useState<Category>("all");
   const [items, setItems] = useState(initialItems);
   const appliedPrefillRouteValue = useRef<string | null>(null);
@@ -60,28 +60,20 @@ export default function SelectService() {
       )
     ) {
       setItems(hydratedPrefill.items);
-      if (hydratedPrefill.service === "express") {
-        setSelectedSpeed("express");
-      } else if (hydratedPrefill.service === "wash" || hydratedPrefill.service === "dry") {
-        setSelectedSpeed("standard");
-        setSelectedType(hydratedPrefill.service);
-      }
+      if (hydratedPrefill.cleaningService) setSelectedCleaningService(hydratedPrefill.cleaningService);
+      if (hydratedPrefill.speed) setSelectedSpeed(hydratedPrefill.speed);
       appliedPrefillRouteValue.current = params.aiPrefill;
     }
   }, [hydratedPrefill, params.aiPrefill]);
 
-  // Compute downstream service identifier based on speed toggle to respect backend contract.
-  const downstreamService = selectedSpeed === "express" ? "express" : selectedType;
-
-  // Compute totals using the existing pricing logic
   const totalItems = useMemo(
     () => Object.values(items).reduce((sum, qty) => sum + qty, 0),
     [items]
   );
   
   const totalAmount = useMemo(
-    () => calculateSubtotal(items, downstreamService),
-    [items, downstreamService]
+    () => calculateSubtotal(items, selectedCleaningService, selectedSpeed),
+    [items, selectedCleaningService, selectedSpeed]
   );
 
   const updateQty = (key: ItemKey, delta: number) => {
@@ -96,7 +88,8 @@ export default function SelectService() {
     router.push({
       pathname: "/schedule-basic",
       params: {
-        service: downstreamService,
+        cleaningService: selectedCleaningService,
+        speed: selectedSpeed,
         items: JSON.stringify(items),
         total: totalAmount,
       },
@@ -155,11 +148,11 @@ export default function SelectService() {
                 id={svc.id}
                 title={svc.title}
                 description={svc.description}
-                basePrice={getItemPriceForService("shirt", svc.id)}
+                basePrice={getItemPriceForService("shirt", svc.id, selectedSpeed)}
                 icon={svc.icon}
                 imageSource={svc.imageSource}
-                selected={selectedType === svc.id}
-                onPress={() => setSelectedType(svc.id)}
+                selected={selectedCleaningService === svc.id}
+                onPress={() => setSelectedCleaningService(svc.id)}
               />
             ))}
           </View>
@@ -183,7 +176,7 @@ export default function SelectService() {
                   key={item.key}
                   item={{
                     ...item,
-                    price: getItemPriceForService(item.key, downstreamService),
+                    price: getItemPriceForService(item.key, selectedCleaningService, selectedSpeed),
                   }}
                   quantity={items[item.key]}
                   onAdd={() => updateQty(item.key, 1)}

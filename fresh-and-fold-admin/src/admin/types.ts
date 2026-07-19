@@ -2,7 +2,9 @@ export interface Order {
   _id: string;
   userId: string;
   mobile: string;
-  service: string;
+  service?: string;
+  cleaningService?: "wash" | "dry";
+  speed?: "standard" | "express";
   totalAmount: number;
   paymentId: string;
   paymentOrderId: string;
@@ -11,6 +13,16 @@ export interface Order {
   status: string;
   createdAt: string;
 }
+
+export const getOrderServiceLabel = (order: Pick<Order, "service" | "cleaningService" | "speed">): string => {
+  if (order.cleaningService && order.speed) {
+    return `${order.cleaningService === "dry" ? "Dry Clean" : "Wash & Iron"} · ${order.speed === "express" ? "Express" : "Standard"}`;
+  }
+  if (order.service === "wash") return "Wash & Iron · Standard";
+  if (order.service === "dry") return "Dry Clean · Standard";
+  if (order.service === "express") return "Express (Legacy)";
+  return "Laundry";
+};
 
 export interface SupportTicket {
   id: string;

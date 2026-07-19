@@ -39,6 +39,17 @@ export function getOrderItemCount(order: Pick<OrderRecord, "items">) {
   return (order.items || []).reduce((total, item) => total + (Number(item.quantity) || 0), 0);
 }
 
+/** New orders keep both dimensions; legacy flattened records remain read-only. */
+export function getOrderServiceLabel(order: Pick<OrderRecord, "cleaningService" | "speed" | "service">) {
+  if (order.cleaningService && order.speed) {
+    return `${order.cleaningService === "dry" ? "Dry Clean" : "Wash & Iron"} · ${order.speed === "express" ? "Express" : "Standard"}`;
+  }
+  if (order.service === "wash") return "Wash & Iron · Standard";
+  if (order.service === "dry") return "Dry Clean · Standard";
+  if (order.service === "express") return "Express (Legacy)";
+  return "Laundry service";
+}
+
 export function getMostRelevantActiveOrder(orders: OrderRecord[]) {
   return orders.find((order) => order.status !== "Delivered") ?? null;
 }

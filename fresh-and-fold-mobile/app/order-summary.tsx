@@ -6,14 +6,17 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SummaryCard from "../components/SummaryCard";
 import { useAppTheme } from "../hooks/useAppTheme";
+import type { ItemKey } from "../utils/bookingData";
 import { apiRequest } from "../utils/api";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
 import {
   DELIVERY_CHARGE,
   FREE_DELIVERY_THRESHOLD,
+  getNormalizedCleaningService,
+  getNormalizedSpeed,
   getItemPriceForService,
-  getNormalizedService,
+  getServiceDisplay,
 } from "../utils/pricing";
 
 type PreviewResponse = {
@@ -47,11 +50,10 @@ export default function OrderSummaryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
-  const { service, items, date, slot, addressId, addressName } = useLocalSearchParams();
-  const normalizedService = getNormalizedService(service as string);
-  const serviceTitle = String(service || "")
-    .replace(/^\w/, (char) => char.toUpperCase())
-    .replace("-", " & ");
+  const { cleaningService: routeCleaningService, speed: routeSpeed, items, date, slot, addressId, addressName } = useLocalSearchParams();
+  const cleaningService = getNormalizedCleaningService(routeCleaningService);
+  const speed = getNormalizedSpeed(routeSpeed);
+  const serviceDisplay = getServiceDisplay(cleaningService, speed);
 
   const parsedItems = useMemo<Record<string, number>>(
     () => (items ? JSON.parse(items as string) : {}),
@@ -66,9 +68,9 @@ export default function OrderSummaryScreen() {
           key,
           label: ITEM_LABELS[key] || key,
           quantity: Number(parsedItems[key]),
-          price: getItemPriceForService(key, service as string),
+          price: getItemPriceForService(key as ItemKey, cleaningService, speed),
         })),
-    [parsedItems, service]
+    [parsedItems, cleaningService, speed]
   );
 
   const totalItemsCount = orderItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -92,7 +94,8 @@ export default function OrderSummaryScreen() {
               itemName: item.key,
               quantity: item.quantity,
             })),
-            service,
+            cleaningService,
+            speed,
           },
         }),
         new Promise<PreviewResponse>((_, reject) =>
@@ -151,9 +154,9 @@ export default function OrderSummaryScreen() {
               <MaterialIcons name="local-laundry-service" size={22} color={theme.primary} />
             </View>
             <View style={styles.serviceTextWrap}>
-              <Text style={[styles.serviceName, { color: theme.text }]}>{serviceTitle}</Text>
+              <Text style={[styles.serviceName, { color: theme.text }]}>{serviceDisplay.cleaningService}</Text>
               <Text style={[styles.serviceDesc, { color: theme.textMuted }]}>
-                {normalizedService === "express" ? "Faster turnaround" : "Regular turnaround"}
+                {speed === "express" ? "Express turnaround" : "Standard turnaround"}
               </Text>
             </View>
             <View
@@ -161,7 +164,7 @@ export default function OrderSummaryScreen() {
                 styles.badge,
                 {
                   backgroundColor:
-                    normalizedService === "express" ? "rgba(245,158,11,0.15)" : theme.primarySoft,
+                    speed === "express" ? "rgba(245,158,11,0.15)" : theme.primarySoft,
                 },
               ]}
             >
@@ -169,11 +172,11 @@ export default function OrderSummaryScreen() {
                 style={[
                   styles.badgeText,
                   {
-                    color: normalizedService === "express" ? "#D97706" : theme.primary,
+                    color: speed === "express" ? "#D97706" : theme.primary,
                   },
                 ]}
               >
-                {normalizedService === "express" ? "Express" : "Standard"}
+                {serviceDisplay.speed}
               </Text>
             </View>
           </View>
@@ -236,10 +239,10 @@ export default function OrderSummaryScreen() {
             </View>
             <View style={styles.infoTextWrap}>
               <Text style={[styles.infoPrimary, { color: theme.text }]}>
-                {normalizedService === "express" ? "Express Delivery" : "Standard Delivery"}
+                {speed === "express" ? "Express Delivery" : "Standard Delivery"}
               </Text>
               <Text style={[styles.infoSecondary, { color: theme.textMuted }]}>
-                {normalizedService === "express"
+                {speed === "express"
                   ? "Express orders are delivered within 24 hours."
                   : "Doorstep pickup and drop included."}
               </Text>
@@ -296,7 +299,8 @@ export default function OrderSummaryScreen() {
                 router.push({
                   pathname: "/payment",
                   params: {
-                    service,
+                    cleaningService,
+                    speed,
                     items,
                     date,
                     slot,
