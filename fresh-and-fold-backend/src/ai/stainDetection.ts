@@ -40,15 +40,29 @@ export const normalizeStainCandidates = (
   );
 };
 
+const boundedStainCandidates = (candidates: readonly StainCandidate[]): StainCandidate[] =>
+  normalizeStainCandidates(candidates).slice(0, 3);
+
 /**
  * Keeps ambiguous output deterministic without promoting a single candidate.
  * The final response schema still requires zero or at least two candidates for
  * an unknown stain.
  */
 export const normalizeStainOutput = (output: StainModelOutput): StainModelOutput => {
-  const candidates = normalizeStainCandidates(output.candidates);
+  const candidates = boundedStainCandidates(output.candidates);
 
-  if (output.stain === "unknown" && candidates.length < 2) {
+  // A provider-declared no_match must never be promoted to a stain result.
+  if (output.status === "no_match") {
+    return {
+      ...output,
+      stain: null,
+      confidence: null,
+      candidates: [],
+    };
+  }
+
+  // An unreadable image cannot safely provide a stain classification.
+  if (output.status === "unreadable") {
     return {
       ...output,
       stain: "unknown",
@@ -57,7 +71,60 @@ export const normalizeStainOutput = (output: StainModelOutput): StainModelOutput
     };
   }
 
-  return { ...output, candidates };
+  // A missing provider stain is recoverable as a visible but unclassified mark.
+  if (output.stain === null) {
+    return {
+      ...output,
+      status: "partial",
+      stain: "unknown",
+      confidence: null,
+      candidates: [],
+    };
+  }
+
+  if (output.stain === "unknown") {
+    return {
+      ...output,
+      status: "partial",
+      stain: "unknown",
+      confidence: null,
+      candidates: candidates.length >= 2 ? candidates : [],
+    };
+  }
+
+  // A known primary without a valid confidence cannot be promoted to certainty.
+  if (output.confidence === null) {
+    return {
+      ...output,
+      status: "partial",
+      stain: "unknown",
+      confidence: null,
+      candidates: [],
+    };
+  }
+
+  const hasDistinctCompetingCandidate = candidates.some(
+    (candidate) => candidate.stain !== output.stain
+  );
+  if (!hasDistinctCompetingCandidate) {
+    // Repeated copies of the provider's primary label do not create ambiguity.
+    return { ...output, candidates: [] };
+  }
+
+  // A valid primary plus a distinct alternative is an ambiguous observation.
+  // The primary confidence is retained only as that candidate's own advisory
+  // score; it never becomes a new or recalibrated value.
+  const ambiguousCandidates = boundedStainCandidates([
+    ...candidates,
+    { stain: output.stain, confidence: output.confidence },
+  ]);
+  return {
+    ...output,
+    status: "partial",
+    stain: "unknown",
+    confidence: null,
+    candidates: ambiguousCandidates.length >= 2 ? ambiguousCandidates : [],
+  };
 };
 
 /** Registers Phase E's standalone advisory stain-detection capability route. */

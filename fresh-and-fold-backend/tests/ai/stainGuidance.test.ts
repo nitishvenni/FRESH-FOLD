@@ -5,6 +5,7 @@ const noCandidates = [] as const;
 
 describe("deterministic stain guidance", () => {
   it("returns meaningfully different, bounded guidance for supported stains", () => {
+    const coffee = getStainCareGuidance({ status: "complete", stain: "coffee", candidates: noCandidates });
     const oil = getStainCareGuidance({ status: "complete", stain: "oil", candidates: noCandidates });
     const tomatoSauce = getStainCareGuidance({ status: "complete", stain: "tomato_sauce", candidates: noCandidates });
     const mud = getStainCareGuidance({ status: "complete", stain: "mud", candidates: noCandidates });
@@ -14,6 +15,8 @@ describe("deterministic stain guidance", () => {
     expect(tomatoSauce.cleaningRecommendation).toContain("Lift excess residue");
     expect(mud.cleaningRecommendation).toContain("surface soil");
     expect(blood.cleaningRecommendation).toContain("possible blood-like stain");
+    expect(coffee.cleaningRecommendation).not.toBe(oil.cleaningRecommendation);
+    expect(mud.cleaningRecommendation).not.toBe(coffee.cleaningRecommendation);
     expect(blood.safetyNotes.join(" ")).not.toMatch(/pathogen|definitely blood/i);
   });
 

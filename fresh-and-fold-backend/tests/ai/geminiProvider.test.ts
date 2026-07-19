@@ -156,6 +156,23 @@ describe("GeminiInteractionsProvider", () => {
     expect(JSON.stringify(failure)).not.toContain("secret-provider-output");
   });
 
+  it("passes recoverable stain semantics to deterministic application normalization", async () => {
+    const output = {
+      status: "complete",
+      stain: "coffee",
+      confidence: 0.76,
+      candidates: [{ stain: "tea", confidence: 0.68 }],
+      warnings: [],
+    };
+    const provider = configuredProvider({
+      interactions: { create: vi.fn().mockResolvedValue({ output_text: JSON.stringify(output) }) },
+    });
+
+    await expect(
+      provider.parse({ ...providerRequest, schema: StainModelOutputSchema })
+    ).resolves.toEqual(output);
+  });
+
   it("normalizes a timeout without exposing provider details", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const timeout = new Error("request timed out");

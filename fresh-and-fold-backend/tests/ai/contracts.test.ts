@@ -114,16 +114,15 @@ describe("AI contracts", () => {
     ).toBe(true);
   });
 
-  it("rejects an inconsistent stain no_match result", () => {
+  it("accepts recoverable semantic inconsistencies at the provider boundary", () => {
     expect(
       StainModelOutputSchema.safeParse({
         status: "no_match",
         stain: "coffee",
         confidence: 0.8,
-        careGuidance: { cleaningRecommendation: null, specialTreatment: null, safetyNotes: [], serviceRecommendation: null },
-        warnings: [],
+        candidates: [{ stain: "tea", confidence: 0.5 }],
       }).success
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("accepts ambiguous known candidates without requiring a false primary stain", () => {
@@ -153,6 +152,20 @@ describe("AI contracts", () => {
     ).toBe(true);
   });
 
+  it("accepts a bounded larger candidate list and missing nullable provider fields", () => {
+    expect(
+      StainModelOutputSchema.safeParse({
+        status: "partial",
+        candidates: [
+          { stain: "coffee", confidence: 0.6 },
+          { stain: "tea", confidence: 0.5 },
+          { stain: "oil", confidence: 0.4 },
+          { stain: "mud", confidence: 0.3 },
+        ],
+      }).data
+    ).toMatchObject({ stain: null, confidence: null, warnings: [] });
+  });
+
   it("keeps the final stain analysis contract strict for one unknown candidate", () => {
     expect(
       StainAnalysisSchema.safeParse({
@@ -171,5 +184,26 @@ describe("AI contracts", () => {
         requiresUserReview: true,
       }).success
     ).toBe(false);
+  });
+
+  it("keeps the final stain analysis contract strict for no_match and unreadable results", () => {
+    const base = {
+      careGuidance: {
+        cleaningRecommendation: null,
+        specialTreatment: null,
+        safetyNotes: [],
+        serviceRecommendation: null,
+      },
+      warnings: [],
+      requestId: "stain_request_123",
+      requiresUserReview: true,
+    };
+
+    expect(StainAnalysisSchema.safeParse({
+      ...base, status: "no_match", stain: "coffee", confidence: 0.8, candidates: [],
+    }).success).toBe(false);
+    expect(StainAnalysisSchema.safeParse({
+      ...base, status: "unreadable", stain: "coffee", confidence: 0.8, candidates: [],
+    }).success).toBe(false);
   });
 });

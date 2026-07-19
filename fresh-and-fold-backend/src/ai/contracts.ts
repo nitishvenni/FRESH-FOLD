@@ -94,15 +94,14 @@ export const StainCandidateSchema = z.object({
 
 export type StainCandidate = z.infer<typeof StainCandidateSchema>;
 
-const validateStainSemantics = (
+const validateFinalStainSemantics = (
   value: {
     status: z.infer<typeof AnalysisStatusSchema>;
     stain: StainType | null;
     confidence: number | null;
     candidates: readonly StainCandidate[];
   },
-  context: z.RefinementCtx,
-  options: { allowSingleUnknownCandidate?: boolean } = {}
+  context: z.RefinementCtx
 ) => {
   if (
     value.status === "no_match" &&
@@ -131,6 +130,17 @@ const validateStainSemantics = (
     });
   }
 
+  if (
+    value.status === "unreadable" &&
+    (value.stain !== "unknown" || value.confidence !== null || value.candidates.length !== 0)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "An unreadable stain result must be an unknown stain with no confidence or candidates.",
+      path: ["stain"],
+    });
+  }
+
   const hasKnownPrimaryStain = value.stain !== null && value.stain !== "unknown";
   if (hasKnownPrimaryStain && (value.confidence === null || value.candidates.length !== 0)) {
     context.addIssue({
@@ -148,11 +158,7 @@ const validateStainSemantics = (
     });
   }
 
-  if (
-    value.stain === "unknown" &&
-    value.candidates.length === 1 &&
-    !options.allowSingleUnknownCandidate
-  ) {
+  if (value.stain === "unknown" && value.candidates.length === 1) {
     context.addIssue({
       code: "custom",
       message: "An ambiguous stain requires at least two plausible candidates.",
@@ -160,11 +166,37 @@ const validateStainSemantics = (
     });
   }
 
-  if (value.stain === "unknown" && value.candidates.length > 0 && value.status !== "partial") {
+  if (value.stain === "unknown" && value.status !== "unreadable" && value.status !== "partial") {
     context.addIssue({
       code: "custom",
-      message: "Competing stain candidates require a partial result.",
+      message: "An unknown visible stain requires a partial result.",
       path: ["status"],
+    });
+  }
+
+  const stains = value.candidates.map((candidate) => candidate.stain);
+  if (new Set(stains).size !== stains.length) {
+    context.addIssue({
+      code: "custom",
+      message: "Final stain candidates must be distinct.",
+      path: ["candidates"],
+    });
+  }
+
+  const candidatesAreSorted = value.candidates.every((candidate, index, candidates) => {
+    const previous = candidates[index - 1];
+    return (
+      !previous ||
+      previous.confidence > candidate.confidence ||
+      (previous.confidence === candidate.confidence &&
+        previous.stain.localeCompare(candidate.stain, "en-US") <= 0)
+    );
+  });
+  if (!candidatesAreSorted) {
+    context.addIssue({
+      code: "custom",
+      message: "Final stain candidates must use deterministic confidence ordering.",
+      path: ["candidates"],
     });
   }
 };
@@ -179,21 +211,19 @@ export const StainCareGuidanceSchema = z.object({
 
 export type StainCareGuidance = z.infer<typeof StainCareGuidanceSchema>;
 
-/** Strict provider output for Phase E. It has no catalog, booking, or price data. */
+/**
+ * Type-safe but semantically permissive provider boundary for Phase E. The
+ * application deterministically normalizes recoverable combinations before
+ * validating the strict public StainAnalysisSchema.
+ */
 export const StainModelOutputSchema = z
   .object({
     status: AnalysisStatusSchema,
-    stain: StainTypeSchema.nullable(),
-    confidence: ConfidenceSchema.nullable(),
-    candidates: z.array(StainCandidateSchema).max(3).default([]),
-    warnings: z.array(z.string().trim().min(1).max(240)).max(20),
-  })
-  // A provider may repeat the same ambiguous candidate. Permit one candidate
-  // at this boundary so route-level deterministic de-duplication can safely
-  // reduce it to an explicit unknown result before final validation.
-  .superRefine((value, context) =>
-    validateStainSemantics(value, context, { allowSingleUnknownCandidate: true })
-  );
+    stain: StainTypeSchema.nullable().optional().default(null),
+    confidence: ConfidenceSchema.nullable().optional().default(null),
+    candidates: z.array(StainCandidateSchema).max(10).optional().default([]),
+    warnings: z.array(z.string().trim().min(1).max(240)).max(20).optional().default([]),
+  });
 
 export type StainModelOutput = z.infer<typeof StainModelOutputSchema>;
 
@@ -202,7 +232,7 @@ export const StainAnalysisSchema = ReviewedResultSchema.extend({
   confidence: ConfidenceSchema.nullable(),
   candidates: z.array(StainCandidateSchema).max(3),
   careGuidance: StainCareGuidanceSchema,
-}).superRefine(validateStainSemantics);
+}).superRefine(validateFinalStainSemantics);
 
 export type StainAnalysis = z.infer<typeof StainAnalysisSchema>;
 

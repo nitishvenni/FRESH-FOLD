@@ -7,7 +7,10 @@ import { AiError } from "../../src/ai/errors";
 import { AI_MAX_IMAGE_BYTES } from "../../src/ai/imageInput";
 import { AiProvider } from "../../src/ai/provider";
 import { createAiRateLimit, createAiRouter } from "../../src/ai/router";
-import { registerStainDetectionRoutes } from "../../src/ai/stainDetection";
+import {
+  normalizeStainCandidates,
+  registerStainDetectionRoutes,
+} from "../../src/ai/stainDetection";
 
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 const authHeader = () => ({ Authorization: `Bearer ${jwt.sign({ userId: "stain-user" }, process.env.JWT_SECRET as string)}` });
@@ -111,6 +114,96 @@ describe("stain detection endpoint", () => {
     });
   });
 
+  it("clears an unknown provider confidence without inventing a replacement", async () => {
+    const provider = providerWithOutput({
+      status: "partial", stain: "unknown", confidence: 0.82, candidates: [], warnings: [],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({
+      status: "partial", stain: "unknown", confidence: null, candidates: [],
+    });
+  });
+
+  it("bounds three-or-more distinct ambiguous candidates by deterministic ranking", async () => {
+    const provider = providerWithOutput({
+      status: "partial", stain: "unknown", confidence: null,
+      candidates: [
+        { stain: "tea", confidence: 0.48 },
+        { stain: "oil", confidence: 0.15 },
+        { stain: "coffee", confidence: 0.48 },
+        { stain: "mud", confidence: 0.64 },
+      ],
+      warnings: [],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body.candidates).toEqual([
+      { stain: "mud", confidence: 0.64 },
+      { stain: "coffee", confidence: 0.48 },
+      { stain: "tea", confidence: 0.48 },
+    ]);
+  });
+
+  it("converts a known primary with distinct competing candidates into advisory possibilities", async () => {
+    const provider = providerWithOutput({
+      status: "complete", stain: "coffee", confidence: 0.76,
+      candidates: [{ stain: "tea", confidence: 0.68 }],
+      warnings: [],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({
+      status: "partial", stain: "unknown", confidence: null,
+      candidates: [
+        { stain: "coffee", confidence: 0.76 },
+        { stain: "tea", confidence: 0.68 },
+      ],
+    });
+  });
+
+  it("keeps a known primary when candidates only repeat that primary", async () => {
+    const provider = providerWithOutput({
+      status: "complete", stain: "coffee", confidence: 0.76,
+      candidates: [{ stain: "coffee", confidence: 0.62 }],
+      warnings: [],
+    });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({
+      status: "complete", stain: "coffee", confidence: 0.76, candidates: [],
+    });
+  });
+
+  it("turns a known stain without confidence into an unknown result", async () => {
+    const provider = providerWithOutput({ status: "partial", stain: "oil", confidence: null, warnings: [] });
+    const response = await postImage(createStainApp(provider)).expect(200);
+    expect(response.body).toMatchObject({
+      status: "partial", stain: "unknown", confidence: null, candidates: [],
+    });
+  });
+
+  it("normalizes inconsistent no_match and unreadable provider states safely", async () => {
+    const noMatch = await postImage(createStainApp(providerWithOutput({
+      status: "no_match", stain: "coffee", confidence: 0.9,
+      candidates: [{ stain: "tea", confidence: 0.4 }], warnings: [],
+    }))).expect(200);
+    expect(noMatch.body).toMatchObject({ status: "no_match", stain: null, confidence: null, candidates: [] });
+
+    const unreadable = await postImage(createStainApp(providerWithOutput({
+      status: "unreadable", stain: "oil", confidence: 0.9,
+      candidates: [{ stain: "tea", confidence: 0.4 }], warnings: [],
+    }))).expect(200);
+    expect(unreadable.body).toMatchObject({ status: "unreadable", stain: "unknown", confidence: null, candidates: [] });
+  });
+
+  it("keeps candidate duplicate resolution and ordering deterministic", () => {
+    expect(normalizeStainCandidates([
+      { stain: "tea", confidence: 0.4 },
+      { stain: "coffee", confidence: 0.4 },
+      { stain: "tea", confidence: 0.6 },
+    ])).toEqual([
+      { stain: "tea", confidence: 0.6 },
+      { stain: "coffee", confidence: 0.4 },
+    ]);
+  });
+
   it("returns no stain only as no_match with null stain and confidence", async () => {
     const provider = providerWithOutput({
       status: "no_match", stain: null, confidence: null,
@@ -135,7 +228,6 @@ describe("stain detection endpoint", () => {
     ["confidence above one", "complete", "coffee", 1.1, []],
     ["malformed candidates", "partial", "unknown", null, "not-an-array"],
     ["unsupported candidate", "partial", "unknown", null, [{ stain: "rust", confidence: 0.6 }, { stain: "oil", confidence: 0.5 }]],
-    ["inconsistent no_match", "no_match", "coffee", 0.8, []],
   ])("rejects %s from a mocked provider", async (_caseName, status, stain, confidence, candidates) => {
     const response = await postImage(createStainApp(providerWithOutput({ status, stain, confidence, candidates, warnings: [] }))).expect(502);
     expect(response.body.code).toBe("AI_INVALID_PROVIDER_RESPONSE");
