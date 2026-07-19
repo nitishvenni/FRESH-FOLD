@@ -85,6 +85,55 @@ describe("natural-language booking endpoint", () => {
     expect(response.body).not.toHaveProperty("bookingId");
   });
 
+  it("maps plural provider labels while preserving their original display labels", async () => {
+    const provider = providerWithOutput({
+      status: "complete",
+      items: [
+        { detectedLabel: "shirts", quantity: 2, confidence: 0.95 },
+        { detectedLabel: "jeans", quantity: 1, confidence: 0.96 },
+      ],
+      service: "wash",
+      pickupDate: null,
+      pickupSlot: null,
+      pickupPreference: null,
+      specialInstructions: null,
+      unresolvedFields: [],
+      warnings: [],
+    });
+
+    const response = await postRequest(
+      createBookingApp(provider),
+      "Wash two shirts and one pair of jeans"
+    ).expect(200);
+
+    expect(response.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ detectedLabel: "shirts", catalogItemId: "shirt", mappingStatus: "mapped", quantity: 2 }),
+      expect.objectContaining({ detectedLabel: "jeans", catalogItemId: "jeans", mappingStatus: "mapped", quantity: 1 }),
+    ]));
+  });
+
+  it("maps plural jackets without changing an explicitly requested dry service", async () => {
+    const response = await postRequest(
+      createBookingApp(providerWithOutput({
+        status: "complete",
+        items: [{ detectedLabel: "jackets", quantity: 2, confidence: 0.94 }],
+        service: "dry",
+        pickupDate: null,
+        pickupSlot: null,
+        pickupPreference: null,
+        specialInstructions: null,
+        unresolvedFields: [],
+        warnings: [],
+      })),
+      "Dry clean two jackets"
+    ).expect(200);
+
+    expect(response.body).toMatchObject({
+      service: "dry",
+      items: [{ detectedLabel: "jackets", catalogItemId: "jacket", mappingStatus: "mapped", quantity: 2 }],
+    });
+  });
+
   it("preserves unsupported labels and conflicting or ambiguous information for review", async () => {
     const provider = providerWithOutput({
       status: "complete",

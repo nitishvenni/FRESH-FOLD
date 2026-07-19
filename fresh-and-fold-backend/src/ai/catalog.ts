@@ -29,24 +29,24 @@ export const catalogItemIds = [
 export type CatalogItemId = (typeof catalogItemIds)[number];
 
 const catalogAliases: Record<CatalogItemId, readonly string[]> = {
-  shirt: ["shirt", "formal shirt", "button down shirt"],
-  tshirt: ["t shirt", "tee shirt", "tee", "tshirt"],
-  jeans: ["jeans", "denim jeans", "denim pants"],
+  shirt: ["shirt", "shirts", "formal shirt", "button down shirt"],
+  tshirt: ["t shirt", "t shirts", "tee shirt", "tee shirts", "tee", "tshirt", "tshirts"],
+  jeans: ["jean", "jeans", "denim jeans", "denim pants"],
   trousers: ["trousers", "trouser", "pants", "slacks", "formal pants"],
-  dress: ["dress", "gown"],
-  jacket: ["jacket", "blazer", "coat"],
-  sweater: ["sweater", "jumper", "cardigan", "pullover", "sweatshirt", "sweat shirt"],
+  dress: ["dress", "dresses", "gown"],
+  jacket: ["jacket", "jackets", "blazer", "coat"],
+  sweater: ["sweater", "sweaters", "jumper", "cardigan", "pullover", "sweatshirt", "sweat shirt"],
   shorts: ["shorts", "short"],
   leggings: ["leggings", "legging"],
   skirt: ["skirt", "skirts"],
   kurta: ["kurta", "kurtas"],
   saree: ["saree", "sari", "sarees", "saris"],
   hoodie: ["hoodie", "hoodies"],
-  bedsheet: ["bedsheet", "bed sheet"],
-  pillowcover: ["pillow cover", "pillowcase", "pillow case"],
-  towel: ["towel", "bath towel", "hand towel"],
-  curtain: ["curtain", "drape", "drapes"],
-  blanket: ["blanket", "quilt", "comforter"],
+  bedsheet: ["bedsheet", "bedsheets", "bed sheet"],
+  pillowcover: ["pillow cover", "pillow covers", "pillowcover", "pillowcovers", "pillowcase", "pillow case"],
+  towel: ["towel", "towels", "bath towel", "hand towel"],
+  curtain: ["curtain", "curtains", "drape", "drapes"],
+  blanket: ["blanket", "blankets", "quilt", "comforter"],
 };
 
 export const normalizeGarmentLabel = (label: string): string =>

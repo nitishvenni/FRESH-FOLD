@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GarmentRecognitionResult } from "../types/ai";
+import type { GarmentRecognitionResult, NaturalLanguageBookingResult } from "../types/ai";
 import { initialItems, ItemKey } from "./bookingData";
 import {
   buildSmartScanBookingPrefill,
@@ -211,6 +211,55 @@ describe("Smart Scan compact booking prefill", () => {
     expect(hydrateAiBookingPrefill(serializeNaturalLanguageBookingPrefill(built.prefill!))).toEqual({
       items: { ...initialItems, shirt: 2, jeans: 1 },
       service: "dry",
+    });
+  });
+
+  it("converts reviewed plural natural-language labels into V2 canonical quantities", () => {
+    const naturalLanguageResult: NaturalLanguageBookingResult = {
+      status: "complete",
+      warnings: [],
+      requestId: "booking_request_123",
+      requiresUserReview: true,
+      source: "natural_language",
+      items: [
+        { detectedLabel: "shirts", normalizedLabel: "shirts", catalogItemId: "shirt", mappingStatus: "mapped", quantity: 2, confidence: 0.95 },
+        { detectedLabel: "jeans", normalizedLabel: "jeans", catalogItemId: "jeans", mappingStatus: "mapped", quantity: 1, confidence: 0.96 },
+      ],
+      service: "wash",
+      pickupDate: null,
+      pickupSlot: null,
+      pickupPreference: null,
+      specialInstructions: null,
+      unresolvedFields: [],
+    };
+    const review = createBookingReviewItems(naturalLanguageResult);
+
+    expect(review.map((item) => item.detectedLabel)).toEqual(["shirts", "jeans"]);
+    expect(buildNaturalLanguageBookingPrefill(review)).toEqual({
+      prefill: { version: 2, source: "natural_language", items: { shirt: 2, jeans: 1 } },
+      unresolvedQuantityItemIds: [],
+    });
+  });
+
+  it("includes plural jackets and a user-accepted dry service in V2", () => {
+    const naturalLanguageResult: NaturalLanguageBookingResult = {
+      status: "complete",
+      warnings: [],
+      requestId: "booking_request_456",
+      requiresUserReview: true,
+      source: "natural_language",
+      items: [{ detectedLabel: "jackets", normalizedLabel: "jackets", catalogItemId: "jacket", mappingStatus: "mapped", quantity: 2, confidence: 0.94 }],
+      service: "dry",
+      pickupDate: null,
+      pickupSlot: null,
+      pickupPreference: null,
+      specialInstructions: null,
+      unresolvedFields: [],
+    };
+
+    expect(buildNaturalLanguageBookingPrefill(createBookingReviewItems(naturalLanguageResult), "dry")).toEqual({
+      prefill: { version: 2, source: "natural_language", items: { jacket: 2 }, service: "dry" },
+      unresolvedQuantityItemIds: [],
     });
   });
 
