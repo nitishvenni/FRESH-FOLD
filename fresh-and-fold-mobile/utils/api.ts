@@ -16,16 +16,18 @@ export function setUnauthorizedHandler(handler: (() => Promise<void> | void) | n
   unauthorizedHandler = handler;
 }
 
+export async function getStoredAuthToken() {
+  return String((await AsyncStorage.getItem("token")) || "")
+    .replace(/^(\s*Bearer\s+)+/i, "")
+    .trim();
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: ApiRequestOptions = {}
 ): Promise<T> {
   try {
-    const token =
-      options.token ??
-      String((await AsyncStorage.getItem("token")) || "")
-        .replace(/^(\s*Bearer\s+)+/i, "")
-        .trim();
+    const token = options.token ?? (await getStoredAuthToken());
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: options.method || "GET",

@@ -19,7 +19,7 @@ import { MaterialIcons, Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { apiRequest } from "../utils/api";
-import { supportSocket } from "../utils/socket";
+import { connectAuthenticatedSocket, supportSocket } from "../utils/socket";
 import { APP_TAB_BAR_HEIGHT } from "../components/AppTabBar";
 import ChatBubble from "../components/ChatBubble";
 import { radius, typography } from "../theme/theme";
@@ -54,6 +54,11 @@ type SupportTicket = {
   id: string;
   status: "Open" | "In Progress" | "Resolved";
   messages: TicketMessage[];
+};
+
+type TicketUpdate = {
+  ticketId?: string;
+  status?: SupportTicket["status"];
 };
 
 type SupportQueryResponse = {
@@ -219,17 +224,13 @@ export default function SupportScreen() {
 
   useEffect(() => {
     const listenerGeneration = conversationGenerationRef.current;
+    let active = true;
     if (!ticketId) {
       supportSocket.off("ticketMessage");
       supportSocket.off("ticketUpdated");
       supportSocket.disconnect();
       return;
     }
-
-    if (!supportSocket.connected) {
-      supportSocket.connect();
-    }
-    supportSocket.emit("joinTicket", ticketId);
 
     const handleTicketMessage = (payload: { ticketId?: string; message?: TicketMessage }) => {
       if (
@@ -252,25 +253,28 @@ export default function SupportScreen() {
       });
     };
 
-    const handleTicketUpdated = (ticket: SupportTicket) => {
+    const handleTicketUpdated = (ticket: TicketUpdate) => {
       if (
         !isCurrentGeneration(listenerGeneration) ||
         !ticket ||
-        ticket.id !== ticketId ||
+        ticket.ticketId !== ticketId ||
         ticketIdRef.current !== ticketId
       ) {
         return;
       }
-      syncTicketState(ticket, {
-        generation: listenerGeneration,
-        expectedTicketId: ticketId,
-      });
+      if (ticket.status) setTicketStatus(ticket.status);
     };
 
     supportSocket.on("ticketMessage", handleTicketMessage);
     supportSocket.on("ticketUpdated", handleTicketUpdated);
+    void connectAuthenticatedSocket(supportSocket).then((connected) => {
+      if (active && connected && isCurrentGeneration(listenerGeneration) && ticketIdRef.current === ticketId) {
+        supportSocket.emit("joinTicket", ticketId);
+      }
+    });
 
     return () => {
+      active = false;
       supportSocket.off("ticketMessage", handleTicketMessage);
       supportSocket.off("ticketUpdated", handleTicketUpdated);
       supportSocket.disconnect();

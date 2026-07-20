@@ -33,6 +33,23 @@ const orderSchema = new mongoose.Schema(
       enum: ["standard", "express"],
       default: null,
     },
+    pickupDate: { type: String, default: null },
+    pickupSlot: { type: String, enum: ["9 AM - 12 PM", "12 PM - 3 PM", "3 PM - 6 PM"], default: null },
+    paymentIntentId: { type: mongoose.Schema.Types.ObjectId, ref: "PaymentIntent", unique: true, sparse: true },
+    // Optional for historical compatibility; new reconciled orders receive the
+    // immutable address snapshot that was validated before checkout.
+    addressSnapshot: {
+      fullName: String,
+      phone: String,
+      houseNumber: String,
+      building: String,
+      street: String,
+      locality: String,
+      city: String,
+      pincode: String,
+      addressType: String,
+      instructions: String,
+    },
     deliveryCharge: Number,
     totalAmount: Number,
     paymentId: {
@@ -49,7 +66,11 @@ const orderSchema = new mongoose.Schema(
     },
     paymentSignature: {
       type: String,
-      required: true,
+      // Client verification stores a checkout signature, but a verified
+      // Razorpay webhook has no client signature. Reconciliation relies on
+      // the verified provider event in that case, so this legacy field cannot
+      // be required for every new canonical Order.
+      default: null,
     },
     paymentStatus: {
       type: String,

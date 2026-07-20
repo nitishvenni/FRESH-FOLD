@@ -7,8 +7,6 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    otp: String,
-    otpExpires: Date,
     pushToken: {
       type: String,
       default: null,

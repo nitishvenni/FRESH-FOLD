@@ -57,6 +57,18 @@ export const getBookingDateOptions = (now = new Date()) => {
   });
 };
 
+/**
+ * Converts either the picker display value or its canonical ISO value into
+ * the canonical business date used by the order API. Route parameters retain
+ * the display value for the existing booking UI, but API payloads must never
+ * send that presentation string as a pickup date.
+ */
+export const getCanonicalBookingDate = (value: unknown, now = new Date()): string | null => {
+  if (typeof value !== "string") return null;
+  const match = getBookingDateOptions(now).find((date) => date.isoDate === value || date.value === value);
+  return match?.isoDate ?? null;
+};
+
 export const getRelativeBookingDateLabel = (isoDate: string, now = new Date()): string | null => {
   const today = getBusinessTodayIsoDate(now);
   if (isoDate === today) return "Today";

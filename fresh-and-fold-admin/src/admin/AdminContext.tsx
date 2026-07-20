@@ -46,6 +46,19 @@ type AdminContextValue = {
   markNotificationsRead: () => void;
 };
 
+type OrderStatusUpdate = {
+  orderId?: string;
+  status?: string;
+  cleaningService?: Order["cleaningService"];
+  speed?: Order["speed"];
+  service?: Order["service"];
+};
+
+type TicketCreatedEvent = {
+  ticket?: Pick<SupportTicket, "id" | "reason">;
+  createdAt?: string;
+};
+
 const AdminContext = createContext<AdminContextValue | null>(null);
 
 async function readApiResponse(response: Response): Promise<{ success?: boolean; token?: string; message?: string }> {
@@ -320,26 +333,27 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     void fetchSupportAnalytics();
     void fetchAiOperationsAnalytics();
 
-    const socket = io(API_BASE_URL);
-    if (selectedTicketId) {
-      socket.emit("joinTicket", selectedTicketId);
-    }
+    const socket = io(API_BASE_URL, {
+      autoConnect: false,
+      auth: { token: normalizedToken },
+    });
     socket.on("ordersUpdated", fetchOrders);
-    socket.on("orderUpdated", (order: Order) => {
+    socket.on("orderUpdated", (order: OrderStatusUpdate) => {
+      if (!order?.orderId || !order.status) return;
       pushNotification({
         type: "order",
-        title: `Order ${order._id.slice(-6)} updated`,
+        title: `Order ${order.orderId.slice(-6)} updated`,
         message: `Status moved to ${order.status}.`,
       });
       pushActivity({
         type: "order",
-        title: `Order ${order._id.slice(-6)}`,
+        title: `Order ${order.orderId.slice(-6)}`,
         meta: `${order.cleaningService && order.speed ? `${order.cleaningService === "dry" ? "Dry Clean" : "Wash & Iron"} · ${order.speed === "express" ? "Express" : "Standard"}` : order.service || "Laundry"} is now ${order.status}`,
       });
       void fetchOrders();
     });
     socket.on("ticketsUpdated", fetchTickets);
-    socket.on("ticketCreated", (payload?: { ticket?: SupportTicket; createdAt?: string }) => {
+    socket.on("ticketCreated", (payload?: TicketCreatedEvent) => {
       setNewTicketAlerts((value) => value + 1);
       const ticket = payload?.ticket;
       if (ticket) {
@@ -356,10 +370,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       }
       void fetchTickets();
       void fetchSupportAnalytics();
-      playNotificationTone();
-    });
-    socket.on("newTicket", () => {
-      void fetchTickets();
       playNotificationTone();
     });
     socket.on("ticketMessage", (payload: { ticketId?: string }) => {
@@ -385,6 +395,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       void fetchSupportAnalytics();
       playNotificationTone();
     });
+    socket.on("connect", () => {
+      if (selectedTicketId) socket.emit("joinTicket", selectedTicketId);
+    });
+    socket.connect();
     return () => {
       socket.disconnect();
     };

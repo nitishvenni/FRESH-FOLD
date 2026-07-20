@@ -8,10 +8,14 @@ type AICareLogoProps = {
 };
 
 const lightLogo = require("../assets/images/brand/ai-care-bucket-fold.png");
-const darkLogo = require("../assets/images/brand/ai-care-bucket-fold-dark.png");
+// This is displayed below 100 dp. Keep the dark variant at the matching decoded size.
+const darkLogo = require("../assets/images/brand/ai-care-bucket-fold-dark-compact.png");
 
 export default function AICareLogo({ size = 58, style, imageStyle }: AICareLogoProps) {
   const { isDark } = useAppTheme();
+  const visualAlignment = isDark
+    ? styles.darkImage
+    : { transform: [{ translateX: -size * 0.035 }, { scale: 1.06 }] };
 
   return (
     <View
@@ -22,7 +26,7 @@ export default function AICareLogo({ size = 58, style, imageStyle }: AICareLogoP
       <Image
         source={isDark ? darkLogo : lightLogo}
         resizeMode="contain"
-        style={[styles.image, imageStyle]}
+        style={[styles.image, visualAlignment, imageStyle]}
       />
     </View>
   );
@@ -37,5 +41,8 @@ const styles = StyleSheet.create({
   image: {
     width: "100%",
     height: "100%",
+  },
+  darkImage: {
+    transform: [{ scale: 1.36 }],
   },
 });

@@ -10,11 +10,12 @@ import { useAppTheme } from "../hooks/useAppTheme";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { calculateSubtotal, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD, getNormalizedCleaningService, getNormalizedSpeed } from "../utils/pricing";
-import { createOrder, getOrderPreview, getOrders } from "../services/orderService";
-import { createPaymentOrder, reportPaymentFailure, verifyPayment } from "../services/paymentService";
+import { getOrderPreview } from "../services/orderService";
+import { clearPendingPaymentIntentId, createPaymentOrder, reportPaymentFailure, savePendingPaymentIntentId, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
 import { showToast } from "../utils/toast";
 import { clearBookingDraft } from "../utils/bookingDraft";
+import { getCanonicalBookingDate } from "../utils/bookingSchedule";
 
 const getPaymentFailureMessage = (error: any) => {
   const raw = String(error?.description || error?.message || "")
@@ -82,25 +83,6 @@ export default function Payment() {
     });
   };
 
-  const recoverExistingOrder = async () => {
-    const latestOrder = [...(await runWithNetworkRetry(() => getOrders()))]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-      )[0];
-
-    if (!latestOrder) {
-      throw new Error("No order found after payment");
-    }
-
-    await clearBookingDraft();
-    goToConfirmation({
-      orderId: latestOrder._id,
-      total: latestOrder.totalAmount || 0,
-      status: latestOrder.status,
-    });
-  };
-
   const fallbackSubtotal = calculateSubtotal(parsedItems, cleaningService, speed);
   const fallbackDelivery =
     fallbackSubtotal < FREE_DELIVERY_THRESHOLD ? DELIVERY_CHARGE : 0;
@@ -137,31 +119,13 @@ export default function Payment() {
     }
   };
 
-  const createOrderInBackend = async (paymentVerificationToken: string) => {
-    try {
-      const data = await runWithNetworkRetry(() =>
-        createOrder({
-          addressId,
-          items: getOrderItems(),
-          cleaningService,
-          speed,
-          paymentVerificationToken,
-        })
-      );
-
-      await clearBookingDraft();
-      goToConfirmation({
-        orderId: data.order._id,
-        total: data.order.totalAmount,
-        status: data.order.status,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.message === "Payment already linked to an order") {
-        await recoverExistingOrder();
-        return;
-      }
-      throw error;
+  const getCanonicalSchedule = () => {
+    const pickupDate = getCanonicalBookingDate(Array.isArray(date) ? date[0] : date);
+    const pickupSlot = String(Array.isArray(slot) ? slot[0] : slot || "").trim();
+    if (!pickupDate || !pickupSlot) {
+      throw new Error("PICKUP_SCHEDULE_REQUIRED");
     }
+    return { pickupDate, pickupSlot: pickupSlot as "9 AM - 12 PM" | "12 PM - 3 PM" | "3 PM - 6 PM" };
   };
 
   const logFailedPayment = async (details: {
@@ -191,12 +155,15 @@ export default function Payment() {
     if (__DEV__) {
       console.log("[RAZORPAY DEBUG] Creating payment order in backend...");
     }
+    const schedule = getCanonicalSchedule();
     const data = await createPaymentOrder({
       addressId,
       items: getOrderItems(),
       cleaningService,
       speed,
+      ...schedule,
     });
+    await savePendingPaymentIntentId(data.paymentIntentId);
 
     if (__DEV__) {
       console.log("[RAZORPAY DEBUG] Backend Response:", {
@@ -250,29 +217,26 @@ export default function Payment() {
         }
       } catch (error: any) {
         if (__DEV__) {
-          console.log("[RAZORPAY DEBUG] Checkout Failed. Error:", {
-            code: error?.code,
-            description: error?.description,
-            message: error?.message,
-          });
+          console.log("[RAZORPAY DEBUG] Checkout did not complete.");
+        }
+        const failureMessage = getPaymentFailureMessage(error);
+        // Keep the specific intent for uncertain checkout failures. A network
+        // interruption after capture must remain recoverable on restart.
+        if (failureMessage === "Payment was cancelled. No order was created.") {
+          await clearPendingPaymentIntentId();
         }
         await logFailedPayment({
           paymentOrderId: data?.paymentOrder?.id,
           paymentId: error?.razorpay_payment_id,
-          reason: getPaymentFailureMessage(error),
+          reason: failureMessage,
           metadata: {
             code: error?.code,
             step: "checkout_open",
-            description: error?.description,
           },
         });
         
         if (__DEV__) {
-          // TEMPORARY: throw the detailed error message for UI toast during debugging
-          const detailedError = new Error(
-            `DEBUG ERROR: code=${error?.code || "none"}, desc=${error?.description || error?.message || "unknown"}`
-          );
-          throw detailedError;
+          throw new Error("PAYMENT_CHECKOUT_FAILED");
         } else {
           throw error;
         }
@@ -281,10 +245,7 @@ export default function Payment() {
 
     const verifyData = await runWithNetworkRetry(() =>
       verifyPayment({
-        addressId,
-        items: getOrderItems(),
-        cleaningService,
-        speed,
+        paymentIntentId: data.paymentIntentId,
         payment: {
           razorpay_payment_id: paymentResult.razorpay_payment_id,
           razorpay_order_id: paymentResult.razorpay_order_id,
@@ -293,11 +254,17 @@ export default function Payment() {
       })
     );
 
-    if (!verifyData.paymentVerificationToken) {
-      throw new Error(verifyData.message || "Payment verification failed");
+    if (verifyData.order) {
+      await clearPendingPaymentIntentId();
+      await clearBookingDraft();
+      goToConfirmation({
+        orderId: verifyData.order._id,
+        total: verifyData.order.totalAmount,
+        status: verifyData.order.status,
+      });
+      return;
     }
-
-    await createOrderInBackend(verifyData.paymentVerificationToken);
+    router.replace({ pathname: "/payment-recovery", params: { paymentIntentId: data.paymentIntentId } });
   };
 
   const confirmOrder = async () => {

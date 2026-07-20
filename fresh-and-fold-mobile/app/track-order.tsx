@@ -19,12 +19,17 @@ import { apiRequest } from "../utils/api";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { notifyOrderStatusUpdate } from "../utils/notifications";
-import { orderSocket } from "../utils/socket";
+import { connectAuthenticatedSocket, orderSocket } from "../utils/socket";
 import { showToast } from "../utils/toast";
 
 type Order = {
   _id: string;
   status: string;
+};
+
+type OrderStatusUpdate = {
+  orderId?: string;
+  status?: string;
 };
 
 // DO NOT CHANGE: Exact backend statuses mapped to timeline
@@ -82,23 +87,17 @@ export default function TrackOrder() {
   }, []);
 
   useEffect(() => {
-    const handleOrderUpdated = (updatedOrder: Order) => {
-      if (updatedOrder?._id === orderId) {
-        setOrder(updatedOrder);
+    const handleOrderUpdated = (updatedOrder: OrderStatusUpdate) => {
+      if (updatedOrder?.orderId === orderId && updatedOrder.status) {
+        setOrder({ _id: updatedOrder.orderId, status: updatedOrder.status });
       }
     };
 
-    const handleOrdersUpdated = () => {
-      void fetchOrder();
-    };
-
-    orderSocket.connect();
+    void connectAuthenticatedSocket(orderSocket);
     orderSocket.on("orderUpdated", handleOrderUpdated);
-    orderSocket.on("ordersUpdated", handleOrdersUpdated);
 
     return () => {
       orderSocket.off("orderUpdated", handleOrderUpdated);
-      orderSocket.off("ordersUpdated", handleOrdersUpdated);
       orderSocket.disconnect();
     };
   }, [orderId]);

@@ -11,6 +11,7 @@ import {
   loadBookingDraft,
   normalizeBookingDraft,
 } from "./bookingDraft";
+import { getBusinessTodayIsoDate } from "./bookingSchedule";
 
 const now = new Date().getTime();
 const base = {
@@ -20,7 +21,7 @@ const base = {
   items: { shirt: 2 },
   cleaningService: "dry",
   speed: "express",
-  pickupDate: new Date().toISOString().slice(0, 10),
+  pickupDate: getBusinessTodayIsoDate(),
   pickupSlot: "9 AM - 12 PM",
   lastStep: "order_summary",
 };

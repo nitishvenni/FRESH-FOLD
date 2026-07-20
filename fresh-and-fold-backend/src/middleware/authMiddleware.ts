@@ -32,8 +32,13 @@ export const authMiddleware = (
       token,
       process.env.JWT_SECRET as string
     );
-
-    req.user = decoded;
+    const userId = decoded && typeof decoded === "object" && "userId" in decoded
+      ? String((decoded as { userId?: unknown }).userId || "").trim()
+      : "";
+    if (!userId) return sendUnauthorized(res, "Invalid token");
+    // Preserve only the trusted customer identity. Caller-supplied role claims
+    // are never used by customer routes or Admin authorization.
+    req.user = { userId };
     next();
   } catch (err) {
     return sendUnauthorized(res, "Invalid token");

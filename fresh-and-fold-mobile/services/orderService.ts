@@ -9,6 +9,8 @@ export type OrderRecord = {
   speed?: "standard" | "express";
   service?: string;
   items?: OrderItemPayload[];
+  pickupDate?: string;
+  pickupSlot?: "9 AM - 12 PM" | "12 PM - 3 PM" | "3 PM - 6 PM";
   addressId?:
     | string
     | {
@@ -59,6 +61,8 @@ export const createOrder = async (payload: {
   items: OrderItemPayload[];
   cleaningService: "wash" | "dry";
   speed: "standard" | "express";
+  pickupDate: string;
+  pickupSlot: "9 AM - 12 PM" | "12 PM - 3 PM" | "3 PM - 6 PM";
   paymentVerificationToken: string;
 }) => {
   return api.post<CreateOrderResponse>("/orders", payload);

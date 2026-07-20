@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setUnauthorizedHandler } from "../utils/api";
+import { disconnectAuthenticatedSockets } from "../utils/socket";
 
 type AuthContextType = {
   isLoggedIn: boolean;
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    disconnectAuthenticatedSockets();
     await AsyncStorage.removeItem("token");
     setIsLoggedIn(false);
   };

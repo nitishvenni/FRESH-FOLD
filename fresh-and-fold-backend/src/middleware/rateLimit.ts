@@ -23,13 +23,12 @@ type Bucket = {
 
 const buckets = new Map<string, Bucket>();
 
-const getClientIp = (req: AuthRequest): string => {
-  const forwardedFor = req.headers["x-forwarded-for"];
-  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
-    return forwardedFor.split(",")[0].trim();
-  }
-  return req.ip || "unknown-ip";
-};
+/** Test-only reset for isolated in-memory limiter assertions. */
+export const __resetRateLimitsForTests = () => buckets.clear();
+
+// Express resolves req.ip using the application's bounded trust-proxy setting.
+// Reading x-forwarded-for directly would let a direct client spoof the limiter key.
+const getClientIp = (req: AuthRequest): string => req.ip || "unknown-ip";
 
 export const createRateLimit = (options: RateLimitOptions) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {

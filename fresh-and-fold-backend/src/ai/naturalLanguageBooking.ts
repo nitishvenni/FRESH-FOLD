@@ -19,6 +19,7 @@ import { createAiProvider } from "./providerFactory";
 import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 import { normalizeQuantityHomophonesForParsing } from "./quantityNormalization";
 import { BOOKING_TIME_ZONE, extractExplicitPickupTime, getBusinessTodayIsoDate, normalizePickupDate, normalizePickupSlot } from "./bookingSchedule";
+import { JSON_BODY_LIMIT } from "../security/http";
 
 /**
  * Turns type-safe provider output into an advisory reviewed draft. It only
@@ -122,7 +123,7 @@ export const registerNaturalLanguageBookingRoutes = (
   router: Router,
   provider: AiProvider = createAiProvider()
 ) => {
-  router.post("/booking/parse", express.json(), async (req: Request, res: Response, next: NextFunction) => {
+  router.post("/booking/parse", express.json({ limit: JSON_BODY_LIMIT }), async (req: Request, res: Response, next: NextFunction) => {
     const requestId = getAiRequestId(res);
     const startedAt = Date.now();
     const providerContext = provider.getDiagnosticContext?.("text") ?? { provider: "unknown" };

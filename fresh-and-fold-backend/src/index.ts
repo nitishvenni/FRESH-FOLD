@@ -12,15 +12,17 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 import express from "express";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import cors from "cors";
 import User from "./models/User";
 import Order from "./models/Order";
 import Address from "./models/Address";
 import SupportTicket from "./models/SupportTicket";
 import SupportInteraction from "./models/SupportInteraction";
 import PaymentAttempt from "./models/PaymentAttempt";
+import PaymentIntent from "./models/PaymentIntent";
+import OtpChallenge from "./models/OtpChallenge";
 import { authMiddleware, AuthRequest } from "./middleware/authMiddleware";
 import { createRateLimit } from "./middleware/rateLimit";
+import { createOtpHash, createOtpRateLimit, createSecureOtp, normalizeIndianMobile, secureOtpMatch } from "./auth/otp";
 import { registerGarmentRecognitionRoutes } from "./ai/garmentRecognition";
 import { registerFabricIdentificationRoutes } from "./ai/fabricIdentification";
 import { registerStainDetectionRoutes } from "./ai/stainDetection";
@@ -30,12 +32,24 @@ import { createAiRouter, createConfiguredAiEventRateLimit, createConfiguredAiRat
 import { aggregateAiInteractions, registerAiInteractionEventRoutes } from "./ai/interactionAnalytics";
 import { logAiDiagnostic } from "./ai/diagnostics";
 import { sendPushNotification } from "./utils/pushNotifications";
+import { createAdminLoginHandler, createAdminMiddleware } from "./admin/auth";
+import { isBookablePickupDate, isCanonicalPickupSlot } from "./booking/schedule";
+import { ORDER_STATUSES, canTransitionOrderStatus, isOrderStatus, nextOrderStatus } from "./booking/orderStatus";
+import { reconcilePaymentIntent } from "./payment/reconciliation";
+import { getCapturedPaymentFromWebhook, isValidRazorpayWebhookSignature } from "./payment/webhook";
 import {
-  buildPaymentContextHash,
+  ADMINS_ROOM,
+  createSocketAuthenticationMiddleware,
+  emitOrderStatusUpdate,
+  emitTicketCreated as emitSocketTicketCreated,
+  emitTicketMessage,
+  emitTicketUpdated,
+  getSocketCorsOrigins,
+  isSocketOriginAllowed,
+  registerSocketAuthorization,
+} from "./realtime/socketSecurity";
+import {
   calculateOrderTotals,
-  CleaningService,
-  FulfillmentSpeed,
-  OrderInputItem,
 } from "./booking/pricing";
 import {
   buildControlledSupportReply,
@@ -43,30 +57,35 @@ import {
   detectEscalation,
   detectSupportIntentWithConfidence,
 } from "./support/promptControl";
+import {
+  JSON_BODY_LIMIT,
+  createConfiguredGlobalRateLimit,
+  createHelmetMiddleware,
+  createHttpCorsMiddleware,
+  createNotFoundHandler,
+  createSafeGlobalErrorHandler,
+  getTrustProxyHops,
+} from "./security/http";
+import { validateProductionEnvironment } from "./security/config";
 
 const DELIVERY_CHARGE = 25;
 const FREE_DELIVERY_THRESHOLD = 299;
 const CURRENCY = "INR";
 
-const ORDER_STEPS = [
-  "Scheduled",
-  "Received at Facility",
-  "Picked Up",
-  "Washing",
-  "Ironing",
-  "Out for Delivery",
-  "Delivered",
-] as const;
-
-
 const MOCK_PAYMENTS = String(process.env.MOCK_PAYMENTS || "").toLowerCase() === "true";
 const mongoUri = String(process.env.MONGO_URI || "").trim();
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+const razorpayWebhookSecret = String(process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
 const msg91AuthKey = String(process.env.MSG91_AUTH_KEY || "").trim();
 const msg91TemplateId = String(process.env.MSG91_TEMPLATE_ID || "").trim();
 const msg91CountryCode = String(process.env.MSG91_COUNTRY_CODE || "91").trim();
 const msg91OtpEnabled = Boolean(msg91AuthKey && msg91TemplateId);
+const otpExpirySeconds = Math.max(60, Number(process.env.OTP_EXPIRY_SECONDS) || 300);
+const otpResendCooldownSeconds = Math.max(30, Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60);
+const otpMaxVerifyAttempts = Math.max(3, Number(process.env.OTP_MAX_VERIFY_ATTEMPTS) || 5);
+const localDevOtpCode = String(process.env.OTP_LOCAL_DEV_CODE || "").trim();
+const localDevOtpEnabled = process.env.NODE_ENV !== "production" && String(process.env.OTP_LOCAL_DEV_MODE || "").toLowerCase() === "true" && /^\d{6}$/.test(localDevOtpCode);
 const razorpayClient =
   razorpayKeyId && razorpayKeySecret
     ? new Razorpay({
@@ -85,6 +104,19 @@ const adminPasswordResetLimiter = createRateLimit({
   max: 5,
   namespace: "admin-password-reset",
 });
+const adminLoginLimiter = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  namespace: "admin-login",
+  error: {
+    code: "ADMIN_LOGIN_RATE_LIMITED",
+    message: "Too many login attempts. Please try again later.",
+  },
+});
+const sendOtpIpLimiter = createOtpRateLimit({ namespace: "otp-send-ip", key: "ip", max: 10, windowMs: 15 * 60 * 1000 });
+const sendOtpMobileLimiter = createOtpRateLimit({ namespace: "otp-send-mobile", key: "mobile", max: 3, windowMs: 15 * 60 * 1000 });
+const verifyOtpIpLimiter = createOtpRateLimit({ namespace: "otp-verify-ip", key: "ip", max: 20, windowMs: 15 * 60 * 1000 });
+const verifyOtpMobileLimiter = createOtpRateLimit({ namespace: "otp-verify-mobile", key: "mobile", max: 10, windowMs: 15 * 60 * 1000 });
 
 const supportEscalateLimiter = createRateLimit({
   windowMs: 10 * 60 * 1000,
@@ -144,30 +176,29 @@ const verifyOtpViaMsg91 = async (mobile: string, otp: string) => {
   return data;
 };
 
+validateProductionEnvironment();
+
 const app = express();
+// Render terminates TLS at one reverse-proxy hop. This bounded setting lets
+// req.ip drive rate limits without trusting an arbitrary forwarded chain.
+app.set("trust proxy", getTrustProxyHops());
 const server = http.createServer(app);
+const socketCorsOrigins = getSocketCorsOrigins();
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: (origin, callback) =>
+      callback(null, isSocketOriginAllowed(origin, socketCorsOrigins, process.env.NODE_ENV === "production")),
   },
+  allowRequest: (request, callback) =>
+    callback(null, isSocketOriginAllowed(request.headers.origin, socketCorsOrigins, process.env.NODE_ENV === "production")),
 });
 
 app.set("io", io);
 
-io.on("connection", (socket) => {
-  console.log("🔥 Admin connected:", socket.id);
-});
-
-io.on("connection", (socket) => {
-  socket.on("joinTicket", (ticketId: string) => {
-    const normalizedTicketId = String(ticketId || "").trim();
-    if (!normalizedTicketId) {
-      return;
-    }
-
-    socket.join(getTicketRoom(normalizedTicketId));
-  });
+io.use(createSocketAuthenticationMiddleware(String(process.env.JWT_SECRET || "")));
+registerSocketAuthorization(io, {
+  findTicketById: async (ticketId) => SupportTicket.findById(ticketId).select("userId").lean(),
 });
 
 let lastOverdueCount = -1;
@@ -180,7 +211,7 @@ const emitOverdueTicketAlert = async () => {
 
   if (overdueCount !== lastOverdueCount) {
     lastOverdueCount = overdueCount;
-    io.emit("ticketOverdueAlert", {
+    io.to(ADMINS_ROOM).emit("ticketOverdueAlert", {
       overdueCount,
       checkedAt: now.toISOString(),
     });
@@ -188,11 +219,16 @@ const emitOverdueTicketAlert = async () => {
 };
 
 
-app.use(
-  cors({
-    origin: "*",
-  })
-);
+app.use(createHelmetMiddleware());
+app.use(createHttpCorsMiddleware());
+
+// Razorpay signs the exact raw bytes, so this route must remain before every
+// JSON parser. Helmet/CORS do not read or transform req.body.
+app.post("/payments/webhook/razorpay", express.raw({ type: "application/json" }), handleRazorpayWebhook);
+
+// This broad limiter excludes the webhook by placement and complements (never
+// replaces) the independent OTP, Admin-login, and AI capability limiters.
+app.use(createConfiguredGlobalRateLimit());
 app.use(
   "/ai",
   createAiRouter({
@@ -211,50 +247,19 @@ app.use(
 
 // AI text routes parse after their request ID/auth/rate-limit middleware so a
 // malformed AI JSON body still receives the standard AI error contract.
-app.use(express.json());
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 app.get("/", (_req, res) => {
-  res.json({
-    status: "ok",
-    app: "Fresh & Fold Backend",
-    docs: {
-      health: "/health",
-    },
-  });
+  res.json({ status: "ok" });
 });
 
 app.get("/health", (_req, res) => {
-  const mongoStateMap: Record<number, string> = {
-    0: "disconnected",
-    1: "connected",
-    2: "connecting",
-    3: "disconnecting",
-  };
-
   const databaseConnected = mongoose.connection.readyState === 1;
-
-  res.status(databaseConnected ? 200 : 503).json({
-    status: "ok",
-    app: "Fresh & Fold Backend",
-    database: {
-      state: mongoStateMap[mongoose.connection.readyState] || "unknown",
-      connected: databaseConnected,
-    },
-    otp: {
-      provider: msg91OtpEnabled ? "msg91" : "local",
-      smsConfigured: msg91OtpEnabled,
-    },
-    payment: {
-      mockPayments: MOCK_PAYMENTS,
-      razorpayConfigured: Boolean(razorpayKeyId && razorpayKeySecret),
-    },
-  });
+  res.status(databaseConnected ? 200 : 503).json({ status: databaseConnected ? "ok" : "unavailable" });
 });
 
 const getNextOrderStep = (status: string): string | null => {
-  const current = ORDER_STEPS.indexOf(status as (typeof ORDER_STEPS)[number]);
-  if (current < 0 || current + 1 >= ORDER_STEPS.length) return null;
-  return ORDER_STEPS[current + 1];
+  return isOrderStatus(status) ? nextOrderStatus(status) : null;
 };
 
 const getSupportRelevantOrder = async (userId: string | undefined) => {
@@ -295,8 +300,6 @@ type TicketStatus = "open" | "in_progress" | "resolved";
 type TicketMessageSender = "user" | "admin" | "ai";
 
 const AI_ESCALATION_MESSAGE = "I am escalating this to our support team.";
-const getTicketRoom = (ticketId: string) => `ticket:${ticketId}`;
-
 const ticketStatusLabel = (status: TicketStatus): "Open" | "In Progress" | "Resolved" => {
   switch (status) {
     case "open":
@@ -407,12 +410,7 @@ const serializeTicket = (ticket: any) => ({
 });
 
 const emitTicketCreated = (ticket: any) => {
-  io.emit("ticketCreated", {
-    ticket: serializeTicket(ticket),
-    createdAt: new Date().toISOString(),
-  });
-  io.emit("newTicket", serializeTicket(ticket));
-  io.emit("ticketsUpdated");
+  emitSocketTicketCreated(io, ticket);
   void emitOverdueTicketAlert();
 };
 
@@ -459,8 +457,7 @@ const upsertEscalatedTicket = async (params: {
       } as any
     );
     await existingTicket.save();
-    io.to(getTicketRoom(String(existingTicket._id))).emit("ticketUpdated", serializeTicket(existingTicket));
-    io.emit("ticketsUpdated");
+    emitTicketUpdated(io, existingTicket);
     void emitOverdueTicketAlert();
     return {
       ticket: existingTicket,
@@ -512,55 +509,53 @@ const upsertEscalatedTicket = async (params: {
   };
 };
 
-app.post("/auth/send-otp", async (req, res) => {
+app.post("/auth/send-otp", sendOtpIpLimiter, sendOtpMobileLimiter, async (req, res) => {
   try {
-    const mobile = String(req.body?.mobile || "").trim();
-
-    if (!/^\d{10}$/.test(mobile)) {
-      return res.status(400).json({ message: "Invalid mobile number" });
+    const mobile = normalizeIndianMobile(req.body?.mobile);
+    if (!mobile) return res.status(400).json({ message: "Invalid mobile number" });
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ message: "Database unavailable" });
+    if (!msg91OtpEnabled && !localDevOtpEnabled) {
+      return res.status(503).json({ code: "OTP_UNAVAILABLE", message: "Verification is temporarily unavailable" });
     }
 
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({ message: "Database unavailable" });
+    const now = new Date();
+    const otp = msg91OtpEnabled ? null : (/^\d{6}$/.test(localDevOtpCode) ? localDevOtpCode : createSecureOtp());
+    const provider = msg91OtpEnabled ? "msg91" : "local";
+    const expiresAt = new Date(now.getTime() + otpExpirySeconds * 1000);
+    const resendAvailableAt = new Date(now.getTime() + otpResendCooldownSeconds * 1000);
+    let challenge: any;
+    try {
+      challenge = await OtpChallenge.findOneAndUpdate(
+        { mobile, $or: [{ resendAvailableAt: { $lte: now } }, { resendAvailableAt: { $exists: false } }] },
+        { $set: { provider, otpHash: otp ? createOtpHash(mobile, otp, String(process.env.JWT_SECRET || "")) : null, expiresAt, resendAvailableAt, failedAttempts: 0, consumedAt: null, lockedAt: null } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+    } catch (error: any) {
+      if (error?.code === 11000) return res.status(429).json({ code: "OTP_RESEND_COOLDOWN", message: "Please wait before requesting another code.", retryAfterSeconds: otpResendCooldownSeconds });
+      throw error;
     }
 
-    let user = await User.findOne({ mobile });
-
-    if (!user) {
-      user = new User({ mobile });
+    try {
+      if (provider === "msg91") await sendOtpViaMsg91(mobile);
+      else if (process.env.NODE_ENV === "development") console.info(`[otp] local development code: ${otp}`);
+    } catch {
+      await OtpChallenge.deleteOne({ _id: challenge._id, mobile });
+      return res.status(503).json({ code: "OTP_UNAVAILABLE", message: "Verification is temporarily unavailable" });
     }
 
-    if (msg91OtpEnabled) {
-      user.otp = null;
-      user.otpExpires = null;
-      await user.save();
-      await sendOtpViaMsg91(mobile);
-      console.log(`OTP sent via MSG91 for ${mobile}`);
-    } else {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-
-      user.otp = otp;
-      user.otpExpires = otpExpires;
-
-      await user.save();
-
-      console.log(`OTP for ${mobile}: ${otp}`);
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error("send-otp error:", error);
+    res.json({ success: true, retryAfterSeconds: otpResendCooldownSeconds });
+  } catch {
+    console.error("OTP send failed");
     res.status(500).json({ message: "Failed to send OTP" });
   }
 });
 
-app.post("/auth/verify-otp", async (req, res) => {
+app.post("/auth/verify-otp", verifyOtpIpLimiter, verifyOtpMobileLimiter, async (req, res) => {
   try {
-    const mobile = String(req.body?.mobile || "").trim();
+    const mobile = normalizeIndianMobile(req.body?.mobile);
     const otp = String(req.body?.otp || "").trim();
 
-    if (!mobile || !otp) {
+    if (!mobile || !/^\d{6}$/.test(otp)) {
       return res.status(400).json({ message: "Mobile and OTP required" });
     }
 
@@ -568,33 +563,55 @@ app.post("/auth/verify-otp", async (req, res) => {
       return res.status(503).json({ message: "Database unavailable" });
     }
 
-    const user = await User.findOne({ mobile });
+    const now = new Date();
+    const challenge = await OtpChallenge.findOne({ mobile });
+    const rejectAttempt = async () => {
+      if (challenge?._id) {
+        const updated = await OtpChallenge.findOneAndUpdate(
+          { _id: challenge._id, consumedAt: null, expiresAt: { $gt: now }, failedAttempts: { $lt: otpMaxVerifyAttempts } },
+          { $inc: { failedAttempts: 1 } },
+          { new: true }
+        );
+        if (updated && updated.failedAttempts >= otpMaxVerifyAttempts) {
+          await OtpChallenge.updateOne({ _id: updated._id, consumedAt: null }, { $set: { lockedAt: now } });
+        }
+      }
+      return res.status(400).json({ code: "INVALID_OTP", message: "Invalid or expired verification code" });
+    };
 
-    if (!user) {
-      return res.status(400).json({ message: "User not found" });
-    }
-
-    if (msg91OtpEnabled) {
-      await verifyOtpViaMsg91(mobile, otp);
+    if (!challenge || challenge.consumedAt || challenge.lockedAt || challenge.expiresAt <= now || challenge.failedAttempts >= otpMaxVerifyAttempts) return rejectAttempt();
+    if (challenge.provider === "msg91") {
+      try { await verifyOtpViaMsg91(mobile, otp); } catch { return rejectAttempt(); }
     } else {
-      if (user.otp !== otp) {
-        return res.status(400).json({ message: "Invalid OTP" });
-      }
+      const expected = String(challenge.otpHash || "");
+      const actual = createOtpHash(mobile, otp, String(process.env.JWT_SECRET || ""));
+      if (!expected || !secureOtpMatch(expected, actual)) return rejectAttempt();
+    }
 
-      if (!user.otpExpires || user.otpExpires < new Date()) {
-        return res.status(400).json({ message: "OTP expired" });
+    const consumed = await OtpChallenge.findOneAndUpdate(
+      { _id: challenge._id, consumedAt: null, lockedAt: null, expiresAt: { $gt: now }, failedAttempts: { $lt: otpMaxVerifyAttempts } },
+      { $set: { consumedAt: now } },
+      { new: true }
+    );
+    if (!consumed) return res.status(400).json({ code: "INVALID_OTP", message: "Invalid or expired verification code" });
+
+    let user = await User.findOne({ mobile });
+    if (!user) {
+      try {
+        user = await User.findOneAndUpdate({ mobile }, { $setOnInsert: { mobile } }, { new: true, upsert: true });
+      } catch (error: any) {
+        if (error?.code !== 11000) throw error;
+        user = await User.findOne({ mobile });
       }
     }
+    if (!user) throw new Error("User creation failed");
   
   
     // Clear OTP
-    user.otp = null;
-    user.otpExpires = null;
-    await user.save();
   
     // 🔐 Generate JWT
     const token = jwt.sign(
-      { userId: user._id, mobile: user.mobile },
+      { userId: user._id },
       process.env.JWT_SECRET as string,
       { expiresIn: "7d" }
     );
@@ -603,105 +620,27 @@ app.post("/auth/verify-otp", async (req, res) => {
       success: true,
       token,
     });
-  } catch (error) {
-    console.error("verify-otp error:", error);
+  } catch {
+    console.error("OTP verification failed");
     res.status(500).json({ message: "OTP verification failed" });
   }
 });
 
-const adminMiddleware = (req: any, res: any, next: any) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token" });
-  }
-
-  // Support both "Bearer token" and raw token
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.split(" ")[1]
-    : authHeader;
-
-  try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    ) as any;
-
-    if (decoded.role !== "admin") {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    req.admin = decoded;
-    next();
-
-  } catch (error) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-};
-
-
+const adminMiddleware = createAdminMiddleware(String(process.env.JWT_SECRET || ""));
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const getAdminEmailFilter = (email: string) => ({
   email: { $regex: new RegExp(`^${escapeRegExp(email)}$`, "i") },
 });
 
-  app.post("/admin/register", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-
-    if (!normalizedEmail || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
-    }
-
-    const existing = await Admin.findOne(getAdminEmailFilter(normalizedEmail));
-    if (existing) {
-      return res.status(400).json({ message: "Admin already exists" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const admin = new Admin({
-      email: normalizedEmail,
-      password: hashedPassword,
-    });
-
-    await admin.save();
-
-    res.json({ success: true, message: "Admin created" });
-
-  } catch (error) {
-    res.status(500).json({ message: "Admin registration failed" });
-  }
-});
-
-app.post("/admin/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-
-    const admin = await Admin.findOne(getAdminEmailFilter(normalizedEmail));
-    if (!admin) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    const isMatch = await bcrypt.compare(password, admin.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    const token = jwt.sign(
-      { adminId: admin._id, role: admin.role },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "7d" }
-    );
-
-    res.json({ success: true, token });
-
-  } catch (error) {
-    res.status(500).json({ message: "Admin login failed" });
-  }
-});
+app.post(
+  "/admin/login",
+  adminLoginLimiter,
+  createAdminLoginHandler({
+    findAdminByEmail: (email) => Admin.findOne(getAdminEmailFilter(email)).lean(),
+    comparePassword: bcrypt.compare,
+    jwtSecret: String(process.env.JWT_SECRET || ""),
+  })
+);
 
 app.post("/admin/forgot-password", adminPasswordResetLimiter, async (req, res) => {
   try {
@@ -775,136 +714,44 @@ type PaymentPayload = {
 type PaymentVerificationTokenPayload = {
   purpose: "payment_verification";
   userId: string;
-  addressId: string;
-  cleaningService: CleaningService;
-  speed: FulfillmentSpeed;
-  totalAmount: number;
-  contextHash: string;
-  paymentId: string;
-  paymentOrderId: string;
-  paymentSignature: string;
-  paidAt: string;
+  paymentIntentId: string;
 };
 
-const verifyPaymentForOrder = async (params: {
-  userId: string;
-  addressId: string;
-  items: OrderInputItem[];
-  cleaningService: unknown;
-  speed: unknown;
-  payment: PaymentPayload;
-}) => {
-  if (MOCK_PAYMENTS) {
-    const pricing = calculateOrderTotals(params.items, params.cleaningService, params.speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
-    const contextHash = buildPaymentContextHash({
-      userId: params.userId,
-      addressId: params.addressId,
-      cleaningService: pricing.cleaningService,
-      speed: pricing.speed,
-      items: pricing.processedItems,
-      totalAmount: pricing.totalAmount,
-    });
-    return {
-      pricing,
-      contextHash,
-      paymentId: String(params.payment?.razorpay_payment_id || "").trim() || generateMockPaymentId(),
-      paymentOrderId: String(params.payment?.razorpay_order_id || "").trim() || generateMockOrderId(),
-      paymentSignature: String(params.payment?.razorpay_signature || "").trim() || "mock_signature",
-      paidAt: new Date().toISOString(),
-    };
-  }
+const addressSnapshotFor = (address: any) => ({
+  fullName: address.fullName || "",
+  phone: address.phone || "",
+  houseNumber: address.houseNumber || "",
+  building: address.building || "",
+  street: address.street || "",
+  locality: address.locality || "",
+  city: address.city || "",
+  pincode: address.pincode || "",
+  addressType: address.addressType || "",
+  instructions: address.instructions || "",
+});
 
-  if (!razorpayClient || !razorpayKeySecret) {
-    throw new Error("Payment gateway is not configured");
-  }
+const confirmPaymentIntent = async (intent: any, paymentId: string) => {
+  if (intent.razorpayPaymentId && intent.razorpayPaymentId !== paymentId) return null;
+  return PaymentIntent.findOneAndUpdate(
+    {
+      _id: intent._id,
+      $or: [{ razorpayPaymentId: { $exists: false } }, { razorpayPaymentId: null }, { razorpayPaymentId: paymentId }],
+    },
+    {
+      $set: {
+        razorpayPaymentId: paymentId,
+        paymentConfirmedAt: intent.paymentConfirmedAt || new Date(),
+        status: intent.orderId ? "reconciled" : "payment_confirmed",
+        reconciliationFailureCode: null,
+      },
+    },
+    { new: true }
+  );
+};
 
-  const razorpayOrderId = String(params.payment?.razorpay_order_id || "").trim();
-  const razorpayPaymentId = String(params.payment?.razorpay_payment_id || "").trim();
-  const razorpaySignature = String(params.payment?.razorpay_signature || "").trim();
-  if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-    return {
-      error: {
-        status: 400,
-        code: "INVALID_PAYMENT_PAYLOAD",
-        message: "Invalid payment payload",
-      },
-    };
-  }
-
-  const pricing = calculateOrderTotals(params.items, params.cleaningService, params.speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
-  const expectedAmountPaise = Math.round(pricing.totalAmount * 100);
-  const contextHash = buildPaymentContextHash({
-    userId: params.userId,
-    addressId: params.addressId,
-    cleaningService: pricing.cleaningService,
-    speed: pricing.speed,
-    items: pricing.processedItems,
-    totalAmount: pricing.totalAmount,
-  });
-
-  const gatewayOrder = await razorpayClient.orders.fetch(razorpayOrderId);
-  if (!gatewayOrder || gatewayOrder.id !== razorpayOrderId) {
-    return {
-      error: {
-        status: 400,
-        code: "PAYMENT_ORDER_NOT_FOUND",
-        message: "Payment order not found",
-      },
-    };
-  }
-  if (gatewayOrder.amount !== expectedAmountPaise || gatewayOrder.currency !== CURRENCY) {
-    return {
-      error: {
-        status: 400,
-        code: "PAYMENT_AMOUNT_MISMATCH",
-        message: "Payment amount mismatch",
-      },
-    };
-  }
-  if (
-    gatewayOrder.notes?.userId !== params.userId ||
-    gatewayOrder.notes?.addressId !== params.addressId ||
-    gatewayOrder.notes?.cleaningService !== pricing.cleaningService ||
-    gatewayOrder.notes?.speed !== pricing.speed ||
-    gatewayOrder.notes?.contextHash !== contextHash
-  ) {
-    return {
-      error: {
-        status: 400,
-        code: "PAYMENT_CONTEXT_MISMATCH",
-        message: "Payment context mismatch",
-      },
-    };
-  }
-  if (gatewayOrder.status && gatewayOrder.status !== "paid") {
-    return {
-      error: {
-        status: 400,
-        code: "PAYMENT_NOT_COMPLETED",
-        message: "Payment is not completed",
-      },
-    };
-  }
-
-  const expectedSignature = buildExpectedRazorpaySignature(razorpayOrderId, razorpayPaymentId);
-  if (!secureHexCompare(expectedSignature, razorpaySignature)) {
-    return {
-      error: {
-        status: 400,
-        code: "INVALID_PAYMENT_SIGNATURE",
-        message: "Invalid payment signature",
-      },
-    };
-  }
-
-  return {
-    pricing,
-    contextHash,
-    paymentId: razorpayPaymentId,
-    paymentOrderId: razorpayOrderId,
-    paymentSignature: razorpaySignature,
-    paidAt: new Date().toISOString(),
-  };
+const sendOrderCreatedRealtime = (appInstance: express.Application, order: any) => {
+  const realtime = appInstance.get("io");
+  realtime?.to(ADMINS_ROOM).emit("ordersUpdated");
 };
 
 const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
@@ -915,9 +762,13 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
       });
     }
 
-    const { addressId, items, cleaningService, speed } = req.body;
+    const { items, cleaningService, speed, pickupDate, pickupSlot } = req.body;
+    const addressId = String(req.body?.addressId || "").trim();
     if (!addressId) {
       return res.status(400).json({ message: "Address is required" });
+    }
+    if (!mongoose.isValidObjectId(addressId)) {
+      return res.status(400).json({ message: "Invalid address" });
     }
 
     const address = await Address.findOne({
@@ -927,16 +778,30 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
     if (!address) {
       return res.status(400).json({ message: "Invalid address" });
     }
+    if (!isBookablePickupDate(pickupDate)) {
+      return res.status(400).json({ code: "INVALID_PICKUP_DATE", message: "Select a valid pickup date" });
+    }
+    if (!isCanonicalPickupSlot(pickupSlot)) {
+      return res.status(400).json({ code: "INVALID_PICKUP_SLOT", message: "Select a valid pickup slot" });
+    }
 
     const pricing = calculateOrderTotals(items, cleaningService, speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
     const receipt = generatePaymentReceipt();
-    const contextHash = buildPaymentContextHash({
-      userId: String(req.user.userId),
-      addressId: String(addressId),
+    const paymentIntent = await PaymentIntent.create({
+      userId: req.user.userId,
+      addressId,
+      addressSnapshot: addressSnapshotFor(address),
+      items: pricing.processedItems,
       cleaningService: pricing.cleaningService,
       speed: pricing.speed,
-      items: pricing.processedItems,
+      pickupDate,
+      pickupSlot,
+      subtotal: pricing.subtotal,
+      deliveryCharge: pricing.deliveryCharge,
       totalAmount: pricing.totalAmount,
+      currency: CURRENCY,
+      receipt,
+      status: "created",
     });
 
     const paymentOrder = MOCK_PAYMENTS
@@ -951,16 +816,17 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
           currency: CURRENCY,
           receipt,
           notes: {
-            userId: String(req.user.userId),
-            addressId: String(addressId),
-            cleaningService: pricing.cleaningService,
-            speed: pricing.speed,
-            contextHash,
+            paymentIntentId: String(paymentIntent._id),
           },
         });
 
+    paymentIntent.razorpayOrderId = paymentOrder.id;
+    paymentIntent.status = "provider_order_created";
+    await paymentIntent.save();
+
     res.json({
       success: true,
+      paymentIntentId: String(paymentIntent._id),
       keyId: razorpayKeyId || "rzp_test_mock_key",
       mock: MOCK_PAYMENTS,
       paymentOrder: {
@@ -979,19 +845,17 @@ const handleCreatePaymentOrder = async (req: AuthRequest, res: any) => {
       },
     });
   } catch (error) {
-    console.error("Razorpay create-order failed:", error);
-    const message = error instanceof Error ? error.message : "Payment order creation failed";
-    res.status(400).json({ message });
+    console.error("Razorpay payment intent creation failed");
+    res.status(400).json({ message: "Payment order creation failed" });
   }
 };
 
 const handleVerifyPayment = async (req: AuthRequest, res: any) => {
   try {
-    const { addressId, items, cleaningService, speed, payment } = req.body;
-
-    if (!addressId) {
-      return res.status(400).json({ message: "Invalid order data" });
-    }
+    const { paymentIntentId, payment } = req.body;
+    const intentId = String(paymentIntentId || "").trim();
+    if (!intentId) return res.status(400).json({ code: "PAYMENT_INTENT_REQUIRED", message: "Payment intent is required" });
+    if (!mongoose.isValidObjectId(intentId)) return res.status(400).json({ code: "INVALID_PAYMENT_INTENT", message: "Invalid payment intent" });
     if (!payment) {
       return res.status(400).json({
         code: "PAYMENT_REQUIRED",
@@ -999,48 +863,36 @@ const handleVerifyPayment = async (req: AuthRequest, res: any) => {
       });
     }
 
-    const address = await Address.findOne({
-      _id: addressId,
-      userId: req.user.userId,
-    });
-    if (!address) {
-      return res.status(400).json({ message: "Invalid address" });
+    const intent = await PaymentIntent.findOne({ _id: intentId, userId: req.user.userId });
+    if (!intent) return res.status(404).json({ code: "PAYMENT_INTENT_NOT_FOUND", message: "Payment intent not found" });
+    const razorpayOrderId = String(payment.razorpay_order_id || "").trim();
+    const razorpayPaymentId = String(payment.razorpay_payment_id || "").trim();
+    const razorpaySignature = String(payment.razorpay_signature || "").trim();
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || razorpayOrderId !== intent.razorpayOrderId) {
+      return res.status(400).json({ code: "INVALID_PAYMENT_PAYLOAD", message: "Invalid payment payload" });
     }
 
-    const verified = await verifyPaymentForOrder({
-      userId: String(req.user.userId),
-      addressId: String(addressId),
-      items,
-      cleaningService,
-      speed,
-      payment,
-    });
-    if ("error" in verified && verified.error) {
-      return res.status(verified.error.status).json(verified.error);
+    if (!MOCK_PAYMENTS) {
+      if (!razorpayClient || !razorpayKeySecret) return res.status(503).json({ message: "Payment gateway is not configured" });
+      const gatewayOrder = await razorpayClient.orders.fetch(razorpayOrderId);
+      if (!gatewayOrder || gatewayOrder.id !== razorpayOrderId || gatewayOrder.amount !== Math.round(intent.totalAmount * 100) || gatewayOrder.currency !== intent.currency || gatewayOrder.notes?.paymentIntentId !== String(intent._id) || (gatewayOrder.status && gatewayOrder.status !== "paid")) {
+        return res.status(400).json({ code: "PAYMENT_CONTEXT_MISMATCH", message: "Payment verification does not match the payment intent" });
+      }
+      if (!secureHexCompare(buildExpectedRazorpaySignature(razorpayOrderId, razorpayPaymentId), razorpaySignature)) {
+        return res.status(400).json({ code: "INVALID_PAYMENT_SIGNATURE", message: "Invalid payment signature" });
+      }
     }
 
-    const existingOrderForPayment = await Order.findOne({
-      $or: [{ paymentId: verified.paymentId }, { paymentOrderId: verified.paymentOrderId }],
-    }).select("_id");
-    if (existingOrderForPayment) {
-      return res.status(409).json({
-        code: "PAYMENT_ALREADY_USED",
-        message: "Payment already linked to an order",
-      });
-    }
+    const confirmedIntent = await confirmPaymentIntent(intent, razorpayPaymentId);
+    if (!confirmedIntent) return res.status(400).json({ code: "PAYMENT_IDENTITY_MISMATCH", message: "Payment does not match the payment intent" });
+    const wasReconciled = Boolean(intent.orderId || intent.status === "reconciled");
+    const reconciled = await reconcilePaymentIntent(String(confirmedIntent._id));
+    if (reconciled.order && !wasReconciled) sendOrderCreatedRealtime(req.app, reconciled.order);
 
     const payload: PaymentVerificationTokenPayload = {
       purpose: "payment_verification",
       userId: String(req.user.userId),
-      addressId: String(addressId),
-      cleaningService: verified.pricing.cleaningService,
-      speed: verified.pricing.speed,
-      totalAmount: verified.pricing.totalAmount,
-      contextHash: verified.contextHash,
-      paymentId: verified.paymentId,
-      paymentOrderId: verified.paymentOrderId,
-      paymentSignature: verified.paymentSignature,
-      paidAt: verified.paidAt,
+      paymentIntentId: String(confirmedIntent._id),
     };
 
     const paymentVerificationToken = jwt.sign(payload, process.env.JWT_SECRET as string, {
@@ -1051,17 +903,14 @@ const handleVerifyPayment = async (req: AuthRequest, res: any) => {
       success: true,
       verified: true,
       mock: MOCK_PAYMENTS,
+      paymentIntentId: String(confirmedIntent._id),
+      status: reconciled.status,
       paymentVerificationToken,
-      payment: {
-        paymentId: verified.paymentId,
-        paymentOrderId: verified.paymentOrderId,
-        paidAt: verified.paidAt,
-      },
+      order: reconciled.order ? { _id: String(reconciled.order._id), totalAmount: reconciled.order.totalAmount, status: reconciled.order.status, pickupDate: reconciled.order.pickupDate, pickupSlot: reconciled.order.pickupSlot } : null,
     });
   } catch (error) {
-    console.error("Payment verification failed:", error);
-    const message = error instanceof Error ? error.message : "Payment verification failed";
-    res.status(400).json({ code: "PAYMENT_VERIFICATION_FAILED", message });
+    console.error("Payment verification failed");
+    res.status(400).json({ code: "PAYMENT_VERIFICATION_FAILED", message: "Payment verification failed" });
   }
 };
 
@@ -1069,6 +918,56 @@ app.post("/payments/create-order", authMiddleware, handleCreatePaymentOrder);
 app.post("/payment/create-order", authMiddleware, handleCreatePaymentOrder);
 app.post("/payments/verify", authMiddleware, handleVerifyPayment);
 app.post("/payment/verify", authMiddleware, handleVerifyPayment);
+
+function handleRazorpayWebhook(req: express.Request, res: express.Response) {
+  return (async () => {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const signature = req.header("x-razorpay-signature");
+    if (!razorpayWebhookSecret) {
+      return res.status(503).json({ code: "WEBHOOK_NOT_CONFIGURED", message: "Webhook processing is unavailable" });
+    }
+    if (!isValidRazorpayWebhookSignature(rawBody, signature, razorpayWebhookSecret)) {
+      return res.status(401).json({ code: "INVALID_WEBHOOK_SIGNATURE", message: "Invalid webhook signature" });
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawBody.toString("utf8"));
+    } catch {
+      return res.status(400).json({ code: "INVALID_WEBHOOK_PAYLOAD", message: "Invalid webhook payload" });
+    }
+    const payment = getCapturedPaymentFromWebhook(payload);
+    if (!payment) return res.status(200).json({ success: true, ignored: true });
+
+    const intent = await PaymentIntent.findOne({ razorpayOrderId: payment.orderId });
+    if (!intent) return res.status(200).json({ success: true, ignored: true });
+    if (payment.amount !== Math.round(intent.totalAmount * 100) || payment.currency !== intent.currency) {
+      return res.status(400).json({ code: "PAYMENT_AMOUNT_MISMATCH", message: "Payment does not match the payment intent" });
+    }
+    const confirmedIntent = await confirmPaymentIntent(intent, payment.id);
+    if (!confirmedIntent) return res.status(400).json({ code: "PAYMENT_IDENTITY_MISMATCH", message: "Payment does not match the payment intent" });
+    const wasReconciled = Boolean(intent.orderId || intent.status === "reconciled");
+    const reconciled = await reconcilePaymentIntent(String(confirmedIntent._id));
+    if (reconciled.order && !wasReconciled) sendOrderCreatedRealtime(req.app, reconciled.order);
+    if (!reconciled.order) return res.status(503).json({ code: "RECONCILIATION_PENDING", message: "Reconciliation pending" });
+    return res.json({ success: true });
+  })().catch(() => res.status(500).json({ code: "WEBHOOK_PROCESSING_FAILED", message: "Webhook processing failed" }));
+}
+
+app.get("/payments/intents/:intentId", authMiddleware, async (req: AuthRequest, res) => {
+  const intentId = String(req.params.intentId || "").trim();
+  if (!mongoose.isValidObjectId(intentId)) return res.status(400).json({ code: "INVALID_PAYMENT_INTENT", message: "Invalid payment intent" });
+  const intent = await PaymentIntent.findOne({ _id: intentId, userId: req.user.userId });
+  if (!intent) return res.status(404).json({ code: "PAYMENT_INTENT_NOT_FOUND", message: "Payment intent not found" });
+  const reconciled = await reconcilePaymentIntent(String(intent._id));
+  const refreshed = await PaymentIntent.findById(intent._id);
+  return res.json({
+    success: true,
+    paymentIntentId: String(intent._id),
+    status: refreshed?.status || reconciled.status,
+    order: reconciled.order ? { _id: String(reconciled.order._id), totalAmount: reconciled.order.totalAmount, status: reconciled.order.status, pickupDate: reconciled.order.pickupDate, pickupSlot: reconciled.order.pickupSlot } : null,
+  });
+});
 app.post("/payments/failure", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { addressId, items, cleaningService, speed, paymentOrderId, paymentId, reason, totalAmount, metadata } = req.body || {};
@@ -1088,8 +987,8 @@ app.post("/payments/failure", authMiddleware, async (req: AuthRequest, res) => {
     });
 
     res.json({ success: true });
-  } catch (error) {
-    console.error("Payment failure logging failed:", error);
+  } catch {
+    console.error("Payment failure logging failed");
     res.status(500).json({ message: "Failed to log payment failure" });
   }
 });
@@ -1112,34 +1011,21 @@ app.post("/payment/failure", authMiddleware, async (req: AuthRequest, res) => {
     });
 
     res.json({ success: true });
-  } catch (error) {
-    console.error("Payment failure logging failed:", error);
+  } catch {
+    console.error("Payment failure logging failed");
     res.status(500).json({ message: "Failed to log payment failure" });
   }
 });
 
 app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { addressId, items, cleaningService, speed, paymentVerificationToken } = req.body;
-    if (!addressId) {
-      return res.status(400).json({ message: "Invalid order data" });
-    }
+    const { paymentVerificationToken } = req.body;
     if (!paymentVerificationToken) {
       return res.status(400).json({
         code: "PAYMENT_VERIFICATION_REQUIRED",
         message: "Payment verification token is required",
       });
     }
-
-    const address = await Address.findOne({
-      _id: addressId,
-      userId: req.user.userId,
-    });
-    if (!address) {
-      return res.status(400).json({ message: "Invalid address" });
-    }
-
-    const pricing = calculateOrderTotals(items, cleaningService, speed, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD);
     let tokenPayload: PaymentVerificationTokenPayload;
     try {
       tokenPayload = jwt.verify(
@@ -1153,71 +1039,25 @@ app.post("/orders", authMiddleware, async (req: AuthRequest, res) => {
       });
     }
 
-    const contextHash = buildPaymentContextHash({
-      userId: String(req.user.userId),
-      addressId: String(addressId),
-      cleaningService: pricing.cleaningService,
-      speed: pricing.speed,
-      items: pricing.processedItems,
-      totalAmount: pricing.totalAmount,
-    });
-
-    if (
-      tokenPayload.purpose !== "payment_verification" ||
-      tokenPayload.userId !== String(req.user.userId) ||
-      tokenPayload.addressId !== String(addressId) ||
-      tokenPayload.cleaningService !== pricing.cleaningService ||
-      tokenPayload.speed !== pricing.speed ||
-      tokenPayload.totalAmount !== pricing.totalAmount ||
-      tokenPayload.contextHash !== contextHash
-    ) {
+    if (tokenPayload.purpose !== "payment_verification" || tokenPayload.userId !== String(req.user.userId) || !tokenPayload.paymentIntentId) {
       return res.status(400).json({
         code: "PAYMENT_VERIFICATION_MISMATCH",
         message: "Payment verification does not match order details",
       });
     }
 
-    const existingOrderForPayment = await Order.findOne({
-      $or: [{ paymentId: tokenPayload.paymentId }, { paymentOrderId: tokenPayload.paymentOrderId }],
-    }).select("_id");
-    if (existingOrderForPayment) {
-      return res.status(409).json({
-        code: "PAYMENT_ALREADY_USED",
-        message: "Payment already linked to an order",
-      });
+    if (!mongoose.isValidObjectId(tokenPayload.paymentIntentId)) {
+      return res.status(400).json({ code: "PAYMENT_VERIFICATION_MISMATCH", message: "Payment verification does not match order details" });
     }
-
-    const order = new Order({
-      userId: req.user.userId,
-      addressId,
-      cleaningService: pricing.cleaningService,
-      speed: pricing.speed,
-      items: pricing.processedItems,
-      deliveryCharge: pricing.deliveryCharge,
-      totalAmount: pricing.totalAmount,
-      paymentId: tokenPayload.paymentId,
-      paymentOrderId: tokenPayload.paymentOrderId,
-      paymentSignature: tokenPayload.paymentSignature,
-      paymentStatus: "paid",
-      paidAt: new Date(tokenPayload.paidAt),
-      status: "Scheduled",
-    });
-
-    await order.save();
-    const io = req.app.get("io");
-    io.emit("ordersUpdated");
-
-    res.json({ success: true, order });
+    const intent = await PaymentIntent.findOne({ _id: tokenPayload.paymentIntentId, userId: req.user.userId });
+    if (!intent) return res.status(404).json({ code: "PAYMENT_INTENT_NOT_FOUND", message: "Payment intent not found" });
+    const wasReconciled = Boolean(intent.orderId || intent.status === "reconciled");
+    const reconciled = await reconcilePaymentIntent(String(intent._id));
+    if (!reconciled.order) return res.status(202).json({ success: true, status: reconciled.status, order: null });
+    if (!wasReconciled) sendOrderCreatedRealtime(req.app, reconciled.order);
+    res.json({ success: true, order: reconciled.order });
   } catch (error) {
-    console.error(error);
-    if ((error as any)?.code === 11000) {
-      return res.status(409).json({
-        code: "PAYMENT_ALREADY_USED",
-        message: "Payment already linked to an order",
-      });
-    }
-    const message = error instanceof Error ? error.message : "Order creation failed";
-    res.status(400).json({ code: "ORDER_CREATION_FAILED", message });
+    res.status(400).json({ code: "ORDER_CREATION_FAILED", message: "Order reconciliation failed" });
   }
 });
 
@@ -1441,6 +1281,9 @@ app.post("/support/tickets/message", authMiddleware, async (req: AuthRequest, re
     if (!ticketId || !message) {
       return res.status(400).json({ message: "Ticket ID and message are required" });
     }
+    if (!mongoose.isValidObjectId(ticketId)) {
+      return res.status(400).json({ message: "Invalid ticket" });
+    }
 
     const ticket = await SupportTicket.findOne({
       _id: ticketId,
@@ -1462,12 +1305,8 @@ app.post("/support/tickets/message", authMiddleware, async (req: AuthRequest, re
     await ticket.save();
 
     const serializedMessage = serializeTicketMessage(newMessage);
-    io.to(getTicketRoom(ticketId)).emit("ticketMessage", {
-      ticketId,
-      message: serializedMessage,
-    });
-    io.to(getTicketRoom(ticketId)).emit("ticketUpdated", serializeTicket(ticket));
-    io.emit("ticketsUpdated");
+    emitTicketMessage(io, ticketId, serializedMessage);
+    emitTicketUpdated(io, ticket);
 
     res.json({
       success: true,
@@ -1571,6 +1410,10 @@ app.post("/addresses", authMiddleware, async (req: AuthRequest, res) => {
 
 app.put("/addresses/:addressId", authMiddleware, async (req: AuthRequest, res) => {
   try {
+    const addressId = String(req.params.addressId || "").trim();
+    if (!mongoose.isValidObjectId(addressId)) {
+      return res.status(400).json({ message: "Invalid address" });
+    }
     const fullName = String(req.body?.fullName || "").trim();
     const phone = String(req.body?.phone || "").trim();
     const street = String(req.body?.street || "").trim();
@@ -1611,7 +1454,7 @@ app.put("/addresses/:addressId", authMiddleware, async (req: AuthRequest, res) =
 
     const address = await Address.findOneAndUpdate(
       {
-        _id: req.params.addressId,
+        _id: addressId,
         userId: req.user.userId,
       },
       {
@@ -1687,6 +1530,9 @@ app.post("/admin/tickets/message", adminMiddleware, async (req, res) => {
     if (!ticketId || !message) {
       return res.status(400).json({ message: "Ticket ID and message are required" });
     }
+    if (!mongoose.isValidObjectId(ticketId)) {
+      return res.status(400).json({ message: "Invalid ticket" });
+    }
 
     const ticket = await SupportTicket.findById(ticketId);
     if (!ticket) {
@@ -1721,12 +1567,8 @@ app.post("/admin/tickets/message", adminMiddleware, async (req, res) => {
     await ticket.save();
 
     const serializedMessage = serializeTicketMessage(newMessage);
-    io.to(getTicketRoom(ticketId)).emit("ticketMessage", {
-      ticketId,
-      message: serializedMessage,
-    });
-    io.to(getTicketRoom(ticketId)).emit("ticketUpdated", serializeTicket(ticket));
-    io.emit("ticketsUpdated");
+    emitTicketMessage(io, ticketId, serializedMessage);
+    emitTicketUpdated(io, ticket);
     void emitOverdueTicketAlert();
 
     res.json({
@@ -1742,11 +1584,15 @@ app.post("/admin/tickets/message", adminMiddleware, async (req, res) => {
 app.patch("/admin/tickets/:id/status", adminMiddleware, async (req, res) => {
   try {
     const normalizedStatus = normalizeTicketStatus(String(req.body?.status || ""));
+    const ticketId = String(req.params.id || "").trim();
     if (!normalizedStatus) {
       return res.status(400).json({ message: "Invalid ticket status" });
     }
+    if (!mongoose.isValidObjectId(ticketId)) {
+      return res.status(400).json({ message: "Invalid ticket" });
+    }
 
-    const ticket = await SupportTicket.findById(req.params.id).select(
+    const ticket = await SupportTicket.findById(ticketId).select(
       "_id userId mobile orderId message userMessage aiReply aiOutcome reason intent status statusHistory confidenceScore firstResponseAt resolvedAt responseDueAt resolutionDueAt responseTimeMinutes resolutionTimeMinutes messages createdAt updatedAt"
     );
 
@@ -1776,8 +1622,7 @@ app.patch("/admin/tickets/:id/status", adminMiddleware, async (req, res) => {
       await ticket.save();
     }
 
-    io.emit("ticketsUpdated");
-    io.to(getTicketRoom(String(req.params.id))).emit("ticketUpdated", serializeTicket(ticket));
+    emitTicketUpdated(io, ticket);
     void emitOverdueTicketAlert();
 
     res.json({
@@ -1895,42 +1740,33 @@ app.get("/admin/ai/analytics", adminMiddleware, async (req, res) => {
   }
 });
 
-app.put("/admin/orders/:id",adminMiddleware, async (req, res) => {
-  try {
-    const { status } = req.body;
-
-    const updated = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-
-    res.json({ success: true, order: updated });
-  } catch (error) {
-    res.status(500).json({ message: "Status update failed" });
-  }
-});
-
-app.patch("/admin/orders/:id/status",adminMiddleware, async (req, res) => {
+const updateAdminOrderStatus = async (req: express.Request, res: express.Response) => {
   try {
     const status = String(req.body?.status || "");
-    const { id } = req.params;
+    const id = String(req.params.id || "").trim();
 
-    if (!ORDER_STEPS.includes(status as (typeof ORDER_STEPS)[number])) {
+    if (!mongoose.isValidObjectId(id) || !isOrderStatus(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
 
-    const updatedOrder = await Order.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
-
+    const updatedOrder = await Order.findById(id);
     if (!updatedOrder) {
       return res.status(404).json({ message: "Order not found" });
     }
+    if (!canTransitionOrderStatus(updatedOrder.status, status)) {
+      return res.status(409).json({
+        code: "INVALID_ORDER_STATUS_TRANSITION",
+        message: "Order status can only move to the next lifecycle step.",
+      });
+    }
 
-    const user = await User.findById(updatedOrder.userId).select("pushToken");
+    const statusChanged = updatedOrder.status !== status;
+    if (statusChanged) {
+      updatedOrder.status = status;
+      await updatedOrder.save();
+    }
+
+    const user = statusChanged ? await User.findById(updatedOrder.userId).select("pushToken") : null;
 
     if (user?.pushToken) {
       let notificationMessage = "";
@@ -1953,34 +1789,42 @@ app.patch("/admin/orders/:id/status",adminMiddleware, async (req, res) => {
       if (notificationMessage) {
         try {
           await sendPushNotification(user.pushToken, notificationMessage);
-        } catch (pushError) {
-          console.error("Push notification failed:", pushError);
+        } catch {
+          console.error("Push notification failed");
         }
       }
     }
 
     const io = req.app.get("io");
-    io.emit("orderUpdated", updatedOrder);
-    io.emit("ordersUpdated");
+    emitOrderStatusUpdate(io, updatedOrder);
 
     res.json({ success: true, order: updatedOrder });
 
   } catch (error) {
     res.status(500).json({ message: "Status update failed" });
   }
-});
+};
+
+// Keep the legacy PUT route compatible, but route it through the same strict
+// lifecycle policy as the current PATCH endpoint.
+app.put("/admin/orders/:id", adminMiddleware, updateAdminOrderStatus);
+app.patch("/admin/orders/:id/status", adminMiddleware, updateAdminOrderStatus);
+
 app.post("/admin/orders/:id/simulate",adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
     const simulationDelayMs = 2500;
     const order = await Order.findById(id);
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    const currentStepIndex = ORDER_STEPS.indexOf(order.status as (typeof ORDER_STEPS)[number]);
+    const currentStepIndex = ORDER_STATUSES.indexOf(order.status as (typeof ORDER_STATUSES)[number]);
     const remainingSteps =
-      currentStepIndex >= 0 ? ORDER_STEPS.slice(currentStepIndex + 1) : ORDER_STEPS.slice(1);
+      currentStepIndex >= 0 ? ORDER_STATUSES.slice(currentStepIndex + 1) : ORDER_STATUSES.slice(1);
 
     if (!remainingSteps.length) {
       return res.json({ success: true, message: "Order is already at the final step" });
@@ -1995,9 +1839,8 @@ app.post("/admin/orders/:id/simulate",adminMiddleware, async (req, res) => {
       );
 
       if (updatedOrder) {
-        io.emit("orderUpdated", updatedOrder);
+        emitOrderStatusUpdate(io, updatedOrder);
       }
-      io.emit("ordersUpdated");
     };
 
     await applyStep(remainingSteps[0]);
@@ -2015,6 +1858,11 @@ app.post("/admin/orders/:id/simulate",adminMiddleware, async (req, res) => {
   }
 });
 
+// Keep unknown endpoints and unhandled faults generic. Individual routes retain
+// their established domain-specific safe error codes above this boundary.
+app.use(createNotFoundHandler());
+app.use(createSafeGlobalErrorHandler());
+
 
 const PORT = Number(process.env.PORT) || 4000;
 
@@ -2023,8 +1871,8 @@ mongoose
   .then(() => {
     console.log("✅ MongoDB Connected");
   })
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
+  .catch(() => {
+    console.error("MongoDB connection failed");
   });
 
 if (!mongoUri) {
