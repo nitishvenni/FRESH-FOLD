@@ -328,6 +328,51 @@ describe("natural-language booking endpoint", () => {
   });
 
   it.each([
+    ["Dry clean two jackets tomorrow at 2 PM", "2 PM", "12 PM - 3 PM"],
+    ["Dry clean two jackets tomorrow at 12 PM", "12 PM", "12 PM - 3 PM"],
+    ["Wash two shirts today at 3 PM", "3 PM", "3 PM - 6 PM"],
+    ["Wash two shirts tomorrow at 9 AM", "9 AM", "9 AM - 12 PM"],
+    ["Wash two shirts tomorrow at 2:00 PM", "2:00 PM", "12 PM - 3 PM"],
+    ["Wash two shirts tomorrow at 14:00", "14:00", "12 PM - 3 PM"],
+    ["Wash two shirts tomorrow at 2 p.m.", "2 p.m.", "12 PM - 3 PM"],
+  ])("uses original explicit request time when the provider returns %s", (requestText, providerSlot, expectedSlot) => {
+    const normalized = normalizeNaturalLanguageBookingOutput({
+      status: "complete", items: [{ detectedLabel: "Shirt", quantity: 2, confidence: 0.94 }],
+      cleaningService: "wash", speed: null, pickupDate: "tomorrow", pickupSlot: providerSlot,
+      pickupPreference: null, specialInstructions: null, unresolvedFields: [], warnings: [],
+    }, requestText);
+    expect(normalized.pickupSlot).toBe(expectedSlot);
+    expect(normalized.unresolvedFields).not.toContain("pickup_slot");
+  });
+
+  it("recovers an explicit request time when the provider omits pickupSlot", () => {
+    const normalized = normalizeNaturalLanguageBookingOutput({
+      status: "complete", items: [{ detectedLabel: "Jacket", quantity: 2, confidence: 0.94 }],
+      cleaningService: "dry", speed: null, pickupDate: "tomorrow", pickupSlot: null,
+      pickupPreference: null, specialInstructions: null, unresolvedFields: ["pickup_slot"], warnings: [],
+    }, "Dry clean two jackets tomorrow at 2 PM");
+    expect(normalized).toMatchObject({ pickupSlot: "12 PM - 3 PM" });
+    expect(normalized.unresolvedFields).not.toContain("pickup_slot");
+  });
+
+  it("uses original explicit time over a conflicting provider slot and leaves conflicting request times unresolved", () => {
+    const providerConflict = normalizeNaturalLanguageBookingOutput({
+      status: "complete", items: [{ detectedLabel: "Jacket", quantity: 2, confidence: 0.94 }],
+      cleaningService: "dry", speed: null, pickupDate: "tomorrow", pickupSlot: "3 PM - 6 PM",
+      pickupPreference: null, specialInstructions: null, unresolvedFields: [], warnings: [],
+    }, "Dry clean two jackets tomorrow at 2 PM");
+    const requestConflict = normalizeNaturalLanguageBookingOutput({
+      status: "complete", items: [{ detectedLabel: "Jacket", quantity: 2, confidence: 0.94 }],
+      cleaningService: "dry", speed: null, pickupDate: "tomorrow", pickupSlot: null,
+      pickupPreference: null, specialInstructions: null, unresolvedFields: [], warnings: [],
+    }, "Pickup tomorrow at 2 PM or 4 PM");
+    expect(providerConflict).toMatchObject({ pickupSlot: "12 PM - 3 PM" });
+    expect(providerConflict.warnings).toContain("The pickup time was normalized from your explicit request.");
+    expect(requestConflict).toMatchObject({ pickupSlot: null });
+    expect(requestConflict.unresolvedFields).toContain("pickup_slot");
+  });
+
+  it.each([
     ["empty", { requestText: "   " }],
     ["missing", {}],
     ["over limit", { requestText: "a".repeat(1_001) }],

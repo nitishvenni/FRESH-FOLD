@@ -13,6 +13,13 @@ export const PICKUP_SLOTS = [
 
 export type PickupSlot = (typeof PICKUP_SLOTS)[number];
 
+export type ExplicitPickupTimeExtraction = {
+  hasExplicitTime: boolean;
+  hasConflictingExplicitTimes: boolean;
+  /** Canonical 24-hour time; it is never logged or sent to analytics. */
+  normalizedTime: string | null;
+};
+
 const getDateParts = (date: Date, timeZone = BOOKING_TIME_ZONE) => {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -67,25 +74,61 @@ export const normalizePickupDate = (
   return candidate && isBookablePickupDate(candidate, now) ? candidate : null;
 };
 
+const toClockMinutes = (value: string): number | null => {
+  const compact = value.trim().toLowerCase().replace(/[.\s]/g, "");
+  const twelveHour = compact.match(/^(1[0-2]|0?[1-9])(?::([0-5]\d))?(am|pm)$/);
+  if (twelveHour) {
+    const hour = Number(twelveHour[1]);
+    const minute = Number(twelveHour[2] ?? "0");
+    return ((hour % 12) + (twelveHour[3] === "pm" ? 12 : 0)) * 60 + minute;
+  }
+  // Require a colon for 24-hour time so phrases such as "around 5" remain
+  // unresolved instead of being turned into a booking slot.
+  const twentyFourHour = compact.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  return twentyFourHour ? Number(twentyFourHour[1]) * 60 + Number(twentyFourHour[2]) : null;
+};
+
+const toCanonicalTime = (minutes: number): string =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/**
+ * Extracts only explicit AM/PM or 24-hour clock syntax from original request
+ * text. Bare quantities and vague time language are deliberately excluded.
+ */
+export const extractExplicitPickupTime = (requestText: string | undefined): ExplicitPickupTimeExtraction => {
+  if (!requestText) return { hasExplicitTime: false, hasConflictingExplicitTimes: false, normalizedTime: null };
+  const values = new Set<number>();
+  const masked = requestText.split("");
+  const meridiemPattern = /\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)(?![a-z])/gi;
+
+  for (const match of requestText.matchAll(meridiemPattern)) {
+    const minutes = toClockMinutes(match[0]);
+    if (minutes !== null) values.add(minutes);
+    const start = match.index ?? 0;
+    for (let index = start; index < start + match[0].length; index += 1) masked[index] = " ";
+  }
+
+  for (const match of masked.join("").matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g)) {
+    const minutes = Number(match[1]) * 60 + Number(match[2]);
+    values.add(minutes);
+  }
+
+  if (values.size !== 1) {
+    return {
+      hasExplicitTime: values.size > 0,
+      hasConflictingExplicitTimes: values.size > 1,
+      normalizedTime: null,
+    };
+  }
+  return { hasExplicitTime: true, hasConflictingExplicitTimes: false, normalizedTime: toCanonicalTime([...values][0]) };
+};
+
 /** Maps an explicit clock time only when it falls inside one current slot. */
 export const normalizePickupSlot = (value: string | null): PickupSlot | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if ((PICKUP_SLOTS as readonly string[]).includes(trimmed)) return trimmed as PickupSlot;
-
-  const compact = trimmed.toLowerCase().replace(/\s+/g, "");
-  let minutes: number | null = null;
-  const twelveHour = compact.match(/^(1[0-2]|0?[1-9])(?::([0-5]\d))?(am|pm)$/);
-  if (twelveHour) {
-    const hour = Number(twelveHour[1]);
-    const minute = Number(twelveHour[2] ?? "0");
-    minutes = ((hour % 12) + (twelveHour[3] === "pm" ? 12 : 0)) * 60 + minute;
-  } else {
-    // Require a colon for 24-hour time so phrases such as "around 5" remain
-    // unresolved instead of being turned into a booking slot.
-    const twentyFourHour = compact.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-    if (twentyFourHour) minutes = Number(twentyFourHour[1]) * 60 + Number(twentyFourHour[2]);
-  }
+  const minutes = toClockMinutes(trimmed);
 
   if (minutes === null) return null;
   if (minutes >= 9 * 60 && minutes < 12 * 60) return PICKUP_SLOTS[0];

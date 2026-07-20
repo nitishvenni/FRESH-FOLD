@@ -18,7 +18,7 @@ import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
 import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 import { normalizeQuantityHomophonesForParsing } from "./quantityNormalization";
-import { BOOKING_TIME_ZONE, getBusinessTodayIsoDate, normalizePickupDate, normalizePickupSlot } from "./bookingSchedule";
+import { BOOKING_TIME_ZONE, extractExplicitPickupTime, getBusinessTodayIsoDate, normalizePickupDate, normalizePickupSlot } from "./bookingSchedule";
 
 /**
  * Turns type-safe provider output into an advisory reviewed draft. It only
@@ -26,7 +26,8 @@ import { BOOKING_TIME_ZONE, getBusinessTodayIsoDate, normalizePickupDate, normal
  * invents a catalog ID, quantity, booking service, speed, date, slot, or instruction.
  */
 export const normalizeNaturalLanguageBookingOutput = (
-  output: NaturalLanguageBookingModelOutput
+  output: NaturalLanguageBookingModelOutput,
+  originalRequestText?: string
 ) => {
   if (output.status === "no_match") {
     return {
@@ -54,20 +55,32 @@ export const normalizeNaturalLanguageBookingOutput = (
     : output.cleaningService;
   const speed = unresolvedFields.has("speed") ? null : output.speed;
   const pickupDate = normalizePickupDate(output.pickupDate);
-  const pickupSlot = normalizePickupSlot(output.pickupSlot);
+  const explicitRequestTime = extractExplicitPickupTime(originalRequestText);
+  const providerPickupSlot = normalizePickupSlot(output.pickupSlot);
+  const pickupSlot = explicitRequestTime.hasConflictingExplicitTimes
+    ? null
+    : explicitRequestTime.normalizedTime
+      ? normalizePickupSlot(explicitRequestTime.normalizedTime)
+      : providerPickupSlot;
   const warnings = [...output.warnings];
-  const hasSchedulingIntent = Boolean(output.pickupDate || output.pickupSlot || output.pickupPreference);
+  const appendWarning = (warning: string) => {
+    if (!warnings.includes(warning) && warnings.length < 20) warnings.push(warning);
+  };
+  const hasSchedulingIntent = Boolean(output.pickupDate || output.pickupSlot || output.pickupPreference || explicitRequestTime.hasExplicitTime);
   if (output.pickupDate && !pickupDate) {
     unresolvedFields.add("pickup_date");
-    warnings.push("The requested pickup date needs confirmation in scheduling.");
+    appendWarning("The requested pickup date needs confirmation in scheduling.");
   } else if (pickupDate) {
     unresolvedFields.delete("pickup_date");
   }
-  if (output.pickupSlot && !pickupSlot) {
+  if ((output.pickupSlot || explicitRequestTime.hasExplicitTime) && !pickupSlot) {
     unresolvedFields.add("pickup_slot");
-    warnings.push("The requested pickup time needs confirmation in scheduling.");
+    appendWarning("The requested pickup time needs confirmation in scheduling.");
   } else if (pickupSlot) {
     unresolvedFields.delete("pickup_slot");
+  }
+  if (explicitRequestTime.normalizedTime && providerPickupSlot && providerPickupSlot !== pickupSlot) {
+    appendWarning("The pickup time was normalized from your explicit request.");
   }
   if (hasSchedulingIntent && !pickupDate) unresolvedFields.add("pickup_date");
   if (hasSchedulingIntent && !pickupSlot) unresolvedFields.add("pickup_slot");
@@ -187,7 +200,8 @@ export const registerNaturalLanguageBookingRoutes = (
         throw new AiError("AI_INVALID_PROVIDER_RESPONSE");
       }
 
-      const normalized = normalizeNaturalLanguageBookingOutput(providerOutput.data);
+      const explicitRequestTime = extractExplicitPickupTime(request.data.requestText);
+      const normalized = normalizeNaturalLanguageBookingOutput(providerOutput.data, request.data.requestText);
       logAiDiagnostic({ requestId, stage: "deterministic_mapping_completed" });
       logAiDiagnostic({
         requestId,
@@ -195,6 +209,16 @@ export const registerNaturalLanguageBookingRoutes = (
         validationCategory: "success",
         status: normalized.status,
       });
+      if (process.env.NODE_ENV !== "production") {
+        logAiDiagnostic({
+          requestId,
+          stage: "booking_schedule_normalization",
+          providerHadPickupSlot: Boolean(providerOutput.data.pickupSlot),
+          providerHadPickupPreference: Boolean(providerOutput.data.pickupPreference),
+          deterministicTimeDetected: explicitRequestTime.hasExplicitTime,
+          canonicalSlotResolved: Boolean(normalized.pickupSlot),
+        });
+      }
       logAiDiagnostic({
         requestId,
         stage: "booking_normalization",

@@ -24,6 +24,7 @@ export type AiDiagnosticStage =
   | "booking_request_validation"
   | "booking_provider_output_validation"
   | "booking_normalization"
+  | "booking_schedule_normalization"
   | "booking_final_response_validation"
   | "deterministic_mapping_completed"
   | "response_completed"
@@ -57,6 +58,10 @@ export type AiDiagnosticEvent = {
   /** Bounded Zod issue metadata; never includes values, messages, or raw output. */
   zodIssuePaths?: string[];
   zodIssueCodes?: string[];
+  providerHadPickupSlot?: boolean;
+  providerHadPickupPreference?: boolean;
+  deterministicTimeDetected?: boolean;
+  canonicalSlotResolved?: boolean;
 };
 
 const SAFE_ANALYSIS_STATUSES = new Set(["complete", "partial", "no_match", "unreadable"]);
@@ -195,6 +200,10 @@ export const logAiDiagnostic = (event: AiDiagnosticEvent): void => {
             .filter((code) => SAFE_ZOD_CODES.has(code)),
         }
       : {}),
+    ...(typeof event.providerHadPickupSlot === "boolean" ? { providerHadPickupSlot: event.providerHadPickupSlot } : {}),
+    ...(typeof event.providerHadPickupPreference === "boolean" ? { providerHadPickupPreference: event.providerHadPickupPreference } : {}),
+    ...(typeof event.deterministicTimeDetected === "boolean" ? { deterministicTimeDetected: event.deterministicTimeDetected } : {}),
+    ...(typeof event.canonicalSlotResolved === "boolean" ? { canonicalSlotResolved: event.canonicalSlotResolved } : {}),
   };
 
   console.info("[ai-diagnostic]", JSON.stringify(safeEvent));
