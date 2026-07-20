@@ -27,28 +27,33 @@ describe("Razorpay webhook boundary", () => {
   });
 
   it("keeps webhook bytes untouched by the later JSON parser", async () => {
+    // Deliberately preserve whitespace so this detects accidental JSON parsing
+    // and re-serialization before signature verification.
+    const rawPayload = '{\n  "event": "payment.captured",\n  "payload": { "payment": { "entity": { "id": "pay_1", "order_id": "order_1", "amount": 12500, "currency": "INR" } } }\n}';
+    const signedRawBody = Buffer.from(rawPayload, "utf8");
+    const rawSignature = crypto.createHmac("sha256", secret).update(signedRawBody).digest("hex");
     const app = express();
     app.post("/payments/webhook/razorpay", express.raw({ type: "application/json" }), (req, res) => {
       const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
       if (!isValidRazorpayWebhookSignature(raw, req.header("x-razorpay-signature"), secret)) {
         return res.status(401).json({ code: "INVALID_WEBHOOK_SIGNATURE" });
       }
-      return res.json({ success: true, receivedRawBody: raw.equals(body) });
+      return res.json({ success: true, receivedRawBody: raw.equals(signedRawBody) });
     });
     app.use(express.json());
 
     await request(app)
       .post("/payments/webhook/razorpay")
       .set("Content-Type", "application/json")
-      .set("x-razorpay-signature", signature)
-      .send(body)
+      .set("x-razorpay-signature", rawSignature)
+      .send(rawPayload)
       .expect(200, { success: true, receivedRawBody: true });
 
     await request(app)
       .post("/payments/webhook/razorpay")
       .set("Content-Type", "application/json")
-      .set("x-razorpay-signature", signature)
-      .send(Buffer.concat([body, Buffer.from(" ")]))
+      .set("x-razorpay-signature", rawSignature)
+      .send(`${rawPayload} `)
       .expect(401, { code: "INVALID_WEBHOOK_SIGNATURE" });
   });
 });

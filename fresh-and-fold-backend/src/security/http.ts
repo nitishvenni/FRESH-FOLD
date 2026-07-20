@@ -7,13 +7,9 @@ export const JSON_BODY_LIMIT = "100kb";
 export const HTTP_CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 export const HTTP_CORS_ALLOWED_HEADERS = ["Authorization", "Content-Type", "X-Request-Id"] as const;
 
-type HttpSecurityEnvironment = {
-  NODE_ENV?: string;
-  HTTP_CORS_ORIGINS?: string;
-  GLOBAL_RATE_LIMIT_WINDOW_MS?: string;
-  GLOBAL_RATE_LIMIT_MAX?: string;
-  TRUST_PROXY_HOPS?: string;
-};
+// NodeJS.ProcessEnv is a string-indexed environment map. Keeping this shape
+// also lets isolated tests provide only the variables relevant to each case.
+type HttpSecurityEnvironment = Record<string, string | undefined>;
 
 const positiveInteger = (value: string | undefined): number | undefined => {
   const parsed = Number(value);

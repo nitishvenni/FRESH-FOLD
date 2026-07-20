@@ -3,12 +3,30 @@ services:
     name: fresh-fold-api
     runtime: node
     rootDir: fresh-and-fold-backend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET
+        sync: false
+      - key: HTTP_CORS_ORIGINS
+        sync: false
+      - key: SOCKET_CORS_ORIGINS
+        sync: false
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: MSG91_AUTH_KEY
+        sync: false
+      - key: MSG91_TEMPLATE_ID
         sync: false
       - key: PORT
         value: "10000"
