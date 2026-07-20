@@ -11,6 +11,7 @@ import ServiceModeSelector from "../components/ServiceModeSelector";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { allItems, clothingItems, homeItems, initialItems, ItemKey } from "../utils/bookingData";
 import { hydrateAiBookingPrefill, shouldApplyAiBookingPrefill } from "../utils/aiBookingDraft";
+import { loadBookingDraft, saveBookingDraft } from "../utils/bookingDraft";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { calculateSubtotal, getItemPriceForService } from "../utils/pricing";
 
@@ -36,7 +37,7 @@ const SERVICE_OPTIONS = [
 
 export default function SelectService() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ aiPrefill?: string }>();
+  const params = useLocalSearchParams<{ aiPrefill?: string; resumeDraft?: string }>();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
 
@@ -70,6 +71,18 @@ export default function SelectService() {
     }
   }, [hydratedPrefill, params.aiPrefill]);
 
+  useEffect(() => {
+    if (params.resumeDraft !== "1") return;
+    void loadBookingDraft().then((draft) => {
+      if (!draft) return;
+      setItems((current) => ({ ...current, ...draft.items }));
+      if (draft.cleaningService) setSelectedCleaningService(draft.cleaningService);
+      if (draft.speed) setSelectedSpeed(draft.speed);
+      if (draft.pickupDate) setSuggestedPickupDate(draft.pickupDate);
+      if (draft.pickupSlot) setSuggestedPickupSlot(draft.pickupSlot);
+    });
+  }, [params.resumeDraft]);
+
   const totalItems = useMemo(
     () => Object.values(items).reduce((sum, qty) => sum + qty, 0),
     [items]
@@ -87,8 +100,9 @@ export default function SelectService() {
     }));
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     void triggerImpactHaptic();
+    await saveBookingDraft({ items, cleaningService: selectedCleaningService, speed: selectedSpeed, lastStep: "schedule_basic" });
     router.push({
       pathname: "/schedule-basic",
       params: {
@@ -220,7 +234,7 @@ export default function SelectService() {
             </View>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={handleContinue}
+              onPress={() => void handleContinue()}
               disabled={totalItems === 0}
               style={[
                 styles.continueBtn,

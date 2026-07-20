@@ -9,14 +9,13 @@ import { getHomeOrderStatus, getOrderItemCount, getOrderServiceLabel, HOME_ORDER
 
 type QuickActionsProps = {
   onNewBooking: () => void;
-  onBookings: () => void;
+  bookingAction: { label: "Bookings" | "Continue Booking"; subtitle: string; onPress: () => void };
   onOffers: () => void;
   onRefer: () => void;
 };
 
-const quickActions = [
+const baseQuickActions = [
   { key: "new", label: "New Booking", subtitle: "Start a pickup", icon: "calendar-outline" as const, color: "primary" as const },
-  { key: "bookings", label: "Bookings", subtitle: "No pending booking", icon: "document-text-outline" as const, color: "success" as const },
   { key: "offers", label: "Offers", subtitle: "Coming soon", icon: "pricetag-outline" as const, color: "warning" as const },
   { key: "refer", label: "Refer & Earn", subtitle: "Coming soon", icon: "gift-outline" as const, color: "accent" as const },
 ] as const;
@@ -67,11 +66,16 @@ function glassSurface(isDark: boolean) {
   };
 }
 
-export function QuickActions({ onNewBooking, onBookings, onOffers, onRefer }: QuickActionsProps) {
+export function QuickActions({ onNewBooking, bookingAction, onOffers, onRefer }: QuickActionsProps) {
   const { theme, isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const compact = width < 360;
-  const handlers = { new: onNewBooking, bookings: onBookings, offers: onOffers, refer: onRefer };
+  const quickActions = [
+    baseQuickActions[0],
+    { key: "bookings", label: bookingAction.label, subtitle: bookingAction.subtitle, icon: "document-text-outline" as const, color: "success" as const },
+    ...baseQuickActions.slice(1),
+  ];
+  const handlers: Record<string, () => void> = { new: onNewBooking, bookings: bookingAction.onPress, offers: onOffers, refer: onRefer };
 
   return (
     <View

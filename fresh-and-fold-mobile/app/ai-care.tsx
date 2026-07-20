@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AICareLogo from "../components/AICareLogo";
 import Card from "../components/Card";
 import { useAppTheme } from "../hooks/useAppTheme";
+import { AI_CARE_ACTIONS } from "../utils/aiCareActions";
 
 export default function AICareScreen() {
   const router = useRouter();
@@ -16,81 +17,24 @@ export default function AICareScreen() {
       <AICareLogo size={96} style={[styles.logo, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]} />
       <Text style={[styles.title, { color: theme.text }]}>AI Care</Text>
       <Text style={[styles.subtitle, { color: theme.textMuted }]}>Your intelligent laundry care space.</Text>
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Open Natural-Language Booking"
-        activeOpacity={0.86}
-        style={styles.secondaryCardPressable}
-        onPress={() => router.push("/ai-booking" as never)}
-      >
-        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="edit-note" size={24} color={theme.primary} />
-          </View>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Describe a Booking</Text>
-          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Type your request and review an editable booking draft.</Text>
-        </Card>
-      </TouchableOpacity>
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Open Smart Scan"
-        activeOpacity={0.86}
-        style={styles.cardPressable}
-        onPress={() => router.push("/smart-scan" as never)}
-      >
-        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="document-scanner" size={24} color={theme.primary} />
-          </View>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Smart Scan</Text>
-          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo to identify garments for your review.</Text>
-        </Card>
-      </TouchableOpacity>
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Open Stain Detection"
-        activeOpacity={0.86}
-        style={styles.secondaryCardPressable}
-        onPress={() => router.push("/stain-scan" as never)}
-      >
-        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="search" size={24} color={theme.primary} />
-          </View>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Stain Detection</Text>
-          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo for cautious stain and cleaning guidance.</Text>
-        </Card>
-      </TouchableOpacity>
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Open Fabric Identification"
-        activeOpacity={0.86}
-        style={styles.secondaryCardPressable}
-        onPress={() => router.push("/fabric-scan" as never)}
-      >
-        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="texture" size={24} color={theme.primary} />
-          </View>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Fabric Identification</Text>
-          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Use a photo for cautious fabric and care guidance.</Text>
-        </Card>
-      </TouchableOpacity>
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Open Care Label Reader"
-        activeOpacity={0.86}
-        style={styles.secondaryCardPressable}
-        onPress={() => router.push("/care-label-scan" as never)}
-      >
-        <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
-            <MaterialIcons name="local-laundry-service" size={24} color={theme.primary} />
-          </View>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Care Label Reader</Text>
-          <Text style={[styles.cardCopy, { color: theme.textMuted }]}>Read visible care-label text and symbols for your review.</Text>
-        </Card>
-      </TouchableOpacity>
+      {AI_CARE_ACTIONS.map((action) => (
+        <TouchableOpacity
+          key={action.key}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${action.title}`}
+          activeOpacity={0.86}
+          style={action.primary ? styles.cardPressable : styles.secondaryCardPressable}
+          onPress={() => router.push(action.route as never)}
+        >
+          <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+            <View style={[styles.iconWrap, { backgroundColor: theme.primarySoft }]}>
+              <MaterialIcons name={action.icon} size={24} color={theme.primary} />
+            </View>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>{action.title}</Text>
+            <Text style={[styles.cardCopy, { color: theme.textMuted }]}>{action.copy}</Text>
+          </Card>
+        </TouchableOpacity>
+      ))}
       <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.primary }]} onPress={() => router.replace("/home")}>
         <Text style={styles.backText}>Back to Home</Text>
       </TouchableOpacity>
@@ -104,7 +48,7 @@ const styles = StyleSheet.create({
   title: { marginTop: 24, fontSize: 30, fontWeight: "700" },
   subtitle: { marginTop: 8, fontSize: 15 },
   card: { width: "100%", alignItems: "center", paddingVertical: 28 },
-  cardPressable: { width: "100%", marginTop: 38 },
+  cardPressable: { width: "100%", marginTop: 22 },
   secondaryCardPressable: { width: "100%", marginTop: 14 },
   iconWrap: { width: 54, height: 54, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   cardTitle: { marginTop: 14, fontSize: 18, fontWeight: "700" },

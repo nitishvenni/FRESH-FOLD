@@ -9,6 +9,8 @@ import TimeSlotCard from "../components/TimeSlotCard";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "../utils/haptics";
 import { getBookingDateOptions, isPickupSlot, PICKUP_SLOTS } from "../utils/bookingSchedule";
+import { saveBookingDraft } from "../utils/bookingDraft";
+import { getNormalizedCleaningService, getNormalizedSpeed } from "../utils/pricing";
 
 export default function ScheduleBasic() {
   const router = useRouter();
@@ -29,9 +31,20 @@ export default function ScheduleBasic() {
 
   const canContinue = !!selectedDate && !!selectedSlot;
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!canContinue) return;
     void triggerImpactHaptic();
+    let parsedItems: unknown = {};
+    try { parsedItems = typeof items === "string" ? JSON.parse(items) : {}; } catch { parsedItems = {}; }
+    const pickupSlot = isPickupSlot(selectedSlot) ? selectedSlot : undefined;
+    await saveBookingDraft({
+      items: parsedItems as Record<string, number>,
+      cleaningService: getNormalizedCleaningService(cleaningService),
+      speed: getNormalizedSpeed(speed),
+      pickupDate: selectedDate ?? undefined,
+      pickupSlot,
+      lastStep: "select_address",
+    });
     router.push({
       pathname: "/select-address",
       params: {
@@ -182,7 +195,7 @@ export default function ScheduleBasic() {
         >
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={handleContinue}
+            onPress={() => void handleContinue()}
             disabled={!canContinue}
             style={[
               styles.continueBtn,

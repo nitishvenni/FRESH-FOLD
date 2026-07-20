@@ -14,6 +14,7 @@ import { createOrder, getOrderPreview, getOrders } from "../services/orderServic
 import { createPaymentOrder, reportPaymentFailure, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
 import { showToast } from "../utils/toast";
+import { clearBookingDraft } from "../utils/bookingDraft";
 
 const getPaymentFailureMessage = (error: any) => {
   const raw = String(error?.description || error?.message || "")
@@ -92,6 +93,7 @@ export default function Payment() {
       throw new Error("No order found after payment");
     }
 
+    await clearBookingDraft();
     goToConfirmation({
       orderId: latestOrder._id,
       total: latestOrder.totalAmount || 0,
@@ -147,6 +149,7 @@ export default function Payment() {
         })
       );
 
+      await clearBookingDraft();
       goToConfirmation({
         orderId: data.order._id,
         total: data.order.totalAmount,

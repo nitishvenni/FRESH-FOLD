@@ -21,6 +21,9 @@ import { apiRequest } from "../utils/api";
 import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "../utils/haptics";
 import { showToast } from "../utils/toast";
+import { saveBookingDraft } from "../utils/bookingDraft";
+import { getNormalizedCleaningService, getNormalizedSpeed } from "../utils/pricing";
+import { isPickupSlot } from "../utils/bookingSchedule";
 
 const ADDRESSES_CACHE_KEY = "addressesCache";
 const SELECTED_ADDRESS_ID_KEY = "selectedAddressId";
@@ -258,6 +261,20 @@ export default function SelectAddress() {
               if (selected) {
                 await AsyncStorage.setItem(SELECTED_ADDRESS_ID_KEY, selected);
               }
+              let parsedItems: unknown = {};
+              try { parsedItems = typeof items === "string" ? JSON.parse(items) : {}; } catch { parsedItems = {}; }
+              const pickupDate = Array.isArray(date) ? date[0] : date;
+              const slotValue = Array.isArray(slot) ? slot[0] : slot;
+              const pickupSlot = isPickupSlot(slotValue) ? slotValue : undefined;
+              await saveBookingDraft({
+                items: parsedItems as Record<string, number>,
+                cleaningService: getNormalizedCleaningService(cleaningService),
+                speed: getNormalizedSpeed(speed),
+                pickupDate,
+                pickupSlot,
+                addressId: selectedAddress?._id,
+                lastStep: "order_summary",
+              }, selectedAddress?._id ? [selectedAddress._id] : []);
               void triggerImpactHaptic();
               router.push({
                 pathname: "/order-summary",

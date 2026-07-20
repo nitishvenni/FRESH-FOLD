@@ -11,6 +11,7 @@ import { useAppTheme } from "../hooks/useAppTheme";
 import useOrders from "../hooks/useOrders";
 import { getMostRelevantActiveOrder } from "../utils/orderStatus";
 import { HOME_AI_ACTION_ROUTES } from "../utils/homeAiActionRoutes";
+import { getBookingDraftResumeTarget, loadBookingDraft, type BookingDraft } from "../utils/bookingDraft";
 import { showToast } from "../utils/toast";
 import HomeHero from "../components/home/HomeHero";
 import HomeAiActionCards from "../components/home/HomeAiActionCards";
@@ -19,7 +20,7 @@ import { CurrentOrderCard, ImpactCard, QuickActions, RecommendationCard } from "
 const PROFILE_NAME_KEY = "profileName";
 const ADDRESSES_CACHE_KEY = "addressesCache";
 
-type AddressCacheItem = { fullName?: string };
+type AddressCacheItem = { _id?: string; fullName?: string };
 
 function getFirstName(name: string) {
   return name.trim().split(/\s+/)[0] || "there";
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const { theme, isDark } = useAppTheme();
   const { orders, loading, error, refresh } = useOrders();
   const [firstName, setFirstName] = useState("there");
+  const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null);
 
   const loadDisplayName = useCallback(async () => {
     try {
@@ -65,9 +67,30 @@ export default function HomeScreen() {
     }, [loadDisplayName])
   );
 
+  const loadActiveBookingDraft = useCallback(async () => {
+    try {
+      const cachedAddresses = await AsyncStorage.getItem(ADDRESSES_CACHE_KEY);
+      const addresses = cachedAddresses ? JSON.parse(cachedAddresses) as AddressCacheItem[] : [];
+      setBookingDraft(await loadBookingDraft(addresses.map((address) => address._id).filter((id): id is string => Boolean(id))));
+    } catch {
+      setBookingDraft(await loadBookingDraft([]));
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadActiveBookingDraft();
+    }, [loadActiveBookingDraft])
+  );
+
   const activeOrder = getMostRelevantActiveOrder(orders);
   const startBooking = () => router.push("/select-service");
   const openAICare = () => router.push(HOME_AI_ACTION_ROUTES.smartScan as never);
+  const continueBooking = () => {
+    if (!bookingDraft) return;
+    const target = getBookingDraftResumeTarget(bookingDraft);
+    router.push({ pathname: target.pathname as never, params: target.params });
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
@@ -147,7 +170,9 @@ export default function HomeScreen() {
         <Animated.View entering={FadeInDown.delay(120).duration(300)}>
           <QuickActions
             onNewBooking={startBooking}
-            onBookings={() => showToast({ type: "info", title: "No booking in progress", message: "Your unfinished booking will appear here when drafts are available." })}
+            bookingAction={bookingDraft
+              ? { label: "Continue Booking", subtitle: "Resume where you left off", onPress: continueBooking }
+              : { label: "Bookings", subtitle: "No pending booking", onPress: () => showToast({ type: "info", title: "No booking in progress", message: "Start a new booking when you're ready." }) }}
             onOffers={() => showToast({ type: "info", title: "Offers are coming soon" })}
             onRefer={() => showToast({ type: "info", title: "Refer & Earn is coming soon" })}
           />
