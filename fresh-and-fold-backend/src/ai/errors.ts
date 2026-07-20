@@ -95,6 +95,15 @@ const isInvalidJsonBody = (error: unknown): boolean =>
   (error as { status?: unknown }).status === 400 &&
   "body" in error;
 
+/** body-parser uses this safe, structured shape when a JSON body exceeds its limit. */
+const isJsonBodyTooLarge = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "status" in error &&
+  (error as { status?: unknown }).status === 413 &&
+  "type" in error &&
+  (error as { type?: unknown }).type === "entity.too.large";
+
 const statusForAiError = (error: AiError): number => {
   switch (error.code) {
     case "AI_IMAGE_TOO_LARGE":
@@ -143,6 +152,16 @@ export const aiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => 
       errorCode: aiError.code,
     });
     return sendAiError(res, aiError, 400);
+  }
+
+  if (isJsonBodyTooLarge(error)) {
+    const aiError = new AiError("AI_INVALID_REQUEST");
+    logAiDiagnostic({
+      requestId: getAiRequestId(res),
+      stage: "response_normalized_failure",
+      errorCode: aiError.code,
+    });
+    return sendAiError(res, aiError, 413);
   }
 
   const aiError = new AiError("AI_PROVIDER_UNAVAILABLE");

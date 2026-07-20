@@ -23,6 +23,20 @@ describe("AI interaction lifecycle endpoint", () => {
   it("validates metadata-only event bodies", async () => {
     await request(app()).post("/ai/events").set(auth()).send({ requestId: "request_12345678", event: "reviewed", transcript: "private" }).expect(400);
   });
+  it("enforces the shared JSON body limit before processing lifecycle metadata", async () => {
+    const oversizedPayload = JSON.stringify({
+      requestId: "request_12345678",
+      event: "reviewed",
+      padding: "x".repeat(101 * 1024),
+    });
+    const response = await request(app())
+      .post("/ai/events")
+      .set(auth())
+      .set("Content-Type", "application/json")
+      .send(oversizedPayload)
+      .expect(413);
+    expect(response.body).toMatchObject({ code: "AI_INVALID_REQUEST", retryable: false });
+  });
   it("updates only a matching owned interaction and is safe to repeat", async () => {
     const update = vi.spyOn(AIInteraction, "updateOne").mockReturnValue({ exec: vi.fn().mockResolvedValue({ matchedCount: 1 }) } as any);
     const response = await request(app()).post("/ai/events").set(auth()).send({ requestId: "request_12345678", event: "continued_to_booking" }).expect(200);

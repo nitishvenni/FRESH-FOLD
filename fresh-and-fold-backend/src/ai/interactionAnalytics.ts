@@ -11,6 +11,7 @@ import AIInteraction, {
 import { logAiDiagnostic } from "./diagnostics";
 import type { AiErrorCode } from "./errors";
 import { AiError, getAiRequestId } from "./errors";
+import { JSON_BODY_LIMIT } from "../security/http";
 
 const RETENTION_DAYS = 90;
 export const MAX_CORRECTION_COUNT = 50;
@@ -118,7 +119,7 @@ export const applyAiInteractionEvent = async (userId: string, event: AiInteracti
 
 /** Capability-local, authenticated lifecycle endpoint. It has no provider call. */
 export const registerAiInteractionEventRoutes = (router: Router) => {
-  router.post("/events", express.json(), async (req: Request, res: Response, next: NextFunction) => {
+  router.post("/events", express.json({ limit: JSON_BODY_LIMIT }), async (req: Request, res: Response, next: NextFunction) => {
     const requestId = getAiRequestId(res);
     const parsed = AiInteractionEventSchema.safeParse(req.body);
     if (!parsed.success) {
