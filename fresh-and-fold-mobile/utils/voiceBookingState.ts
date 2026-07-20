@@ -12,4 +12,6 @@ export const canSubmitVoiceTranscript = (transcript: string, state: VoiceBooking
   !processing && !isVoiceListening(state) && transcript.trim().length > 0 && transcript.trim().length <= MAX_VOICE_BOOKING_TRANSCRIPT_LENGTH;
 
 export const shouldCancelVoiceRecognitionForAppState = (state: VoiceBookingState, appState: string): boolean =>
-  appState !== "active" && (state === "requesting_permission" || state === "listening" || state === "stopping");
+  // Permission prompts can transiently move Android/iOS out of "active". They
+  // are not a real background transition and must not abort the pending start.
+  appState === "background" && (state === "listening" || state === "stopping");

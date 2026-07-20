@@ -16,6 +16,7 @@ import { AiError, getAiRequestId } from "./errors";
 import { buildNaturalLanguageBookingInstructions } from "./prompts";
 import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
+import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 
 const todayIsoDate = (): string => new Date().toISOString().slice(0, 10);
 
@@ -99,6 +100,7 @@ export const registerNaturalLanguageBookingRoutes = (
 ) => {
   router.post("/booking/parse", express.json(), async (req: Request, res: Response, next: NextFunction) => {
     const requestId = getAiRequestId(res);
+    const startedAt = Date.now();
     const providerContext = provider.getDiagnosticContext?.("text") ?? { provider: "unknown" };
 
     try {
@@ -209,9 +211,19 @@ export const registerNaturalLanguageBookingRoutes = (
         validationCategory: "success",
         status: result.data.status,
       });
+      const userId = getAiInteractionUserId(req);
+      if (userId) void recordAiInteraction({ capability: "natural_language_booking", requestId, userId,
+        outcome: outcomeFromStatus(result.data.status), confidenceBucket: confidenceBucketForValues(result.data.items.map((item) => item.confidence)),
+        mappedCount: result.data.items.filter((item) => item.mappingStatus === "mapped").length,
+        unmappedCount: result.data.items.filter((item) => item.mappingStatus === "unmapped").length,
+        durationMs: Date.now() - startedAt,
+        ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}),
+        modelAlias: "text", ...(request.data.source ? { source: request.data.source } : {}) });
       logAiDiagnostic({ requestId, stage: "response_completed" });
       return res.status(200).json(result.data);
     } catch (error) {
+      const userId = getAiInteractionUserId(req);
+      if (userId) void recordAiInteraction({ capability: "natural_language_booking", requestId, userId, outcome: "failed", confidenceBucket: "unavailable", durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "text", ...(error instanceof AiError ? { errorCode: error.code } : {}) });
       return next(error);
     }
   });

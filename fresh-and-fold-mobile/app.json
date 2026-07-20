@@ -34,8 +34,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Fresh & Fold uses your photos to scan garments for your review.",
-          "cameraPermission": "Fresh & Fold uses your camera to scan garments for your review.",
-          "microphonePermission": false
+          "cameraPermission": "Fresh & Fold uses your camera to scan garments for your review."
         }
       ],
       [

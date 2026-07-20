@@ -23,7 +23,8 @@ describe("Voice Booking state rules", () => {
 
   it("cancels active recognition when the app leaves the foreground", () => {
     expect(shouldCancelVoiceRecognitionForAppState("listening", "background")).toBe(true);
-    expect(shouldCancelVoiceRecognitionForAppState("requesting_permission", "inactive")).toBe(true);
+    expect(shouldCancelVoiceRecognitionForAppState("requesting_permission", "inactive")).toBe(false);
+    expect(shouldCancelVoiceRecognitionForAppState("requesting_permission", "background")).toBe(false);
     expect(shouldCancelVoiceRecognitionForAppState("transcript_ready", "background")).toBe(false);
     expect(shouldCancelVoiceRecognitionForAppState("listening", "active")).toBe(false);
   });

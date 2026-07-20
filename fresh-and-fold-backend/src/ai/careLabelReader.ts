@@ -19,6 +19,7 @@ import { aiImageUpload, toAiImageInput, validateAiImage } from "./imageInput";
 import { buildCareLabelInstructions } from "./prompts";
 import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
+import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 
 const careLabelInputText =
   "Analyze this single image for visible garment care-label text and symbols. Return only the requested structured output.";
@@ -165,6 +166,7 @@ export const registerCareLabelReaderRoutes = (
     async (req: Request, res: Response, next: NextFunction) => {
       const uploadedFile = req.file;
       const requestId = getAiRequestId(res);
+      const startedAt = Date.now();
       const providerContext = provider.getDiagnosticContext?.("vision") ?? { provider: "unknown" };
 
       try {
@@ -266,9 +268,14 @@ export const registerCareLabelReaderRoutes = (
           validationCategory: "success",
           status: parsedResult.data.status,
         });
+        const result = parsedResult.data;
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "care_label_reader", requestId, userId, outcome: outcomeFromStatus(result.status), confidenceBucket: confidenceBucketForValues(result.readings.map((item) => item.confidence)), durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision" });
         logAiDiagnostic({ requestId, stage: "response_completed" });
-        return res.status(200).json(parsedResult.data);
+        return res.status(200).json(result);
       } catch (error) {
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "care_label_reader", requestId, userId, outcome: "failed", confidenceBucket: "unavailable", durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision", ...(error instanceof AiError ? { errorCode: error.code } : {}) });
         return next(error);
       } finally {
         uploadedFile?.buffer.fill(0);

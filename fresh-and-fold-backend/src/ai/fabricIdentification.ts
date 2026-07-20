@@ -10,6 +10,7 @@ import { aiImageUpload, toAiImageInput, validateAiImage } from "./imageInput";
 import { buildFabricIdentificationInstructions } from "./prompts";
 import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
+import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 
 const fabricInputText =
   "Analyze this single image for visually plausible fabric candidates. Return only the requested structured output.";
@@ -47,6 +48,7 @@ export const registerFabricIdentificationRoutes = (
     async (req: Request, res: Response, next: NextFunction) => {
       const uploadedFile = req.file;
       const requestId = getAiRequestId(res);
+      const startedAt = Date.now();
       const providerContext = provider.getDiagnosticContext?.("vision") ?? { provider: "unknown" };
 
       try {
@@ -132,9 +134,14 @@ export const registerFabricIdentificationRoutes = (
           stage: "application_zod_validation",
           validationCategory: "success",
         });
+        const result = parsedResult.data;
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "fabric_identification", requestId, userId, outcome: outcomeFromStatus(result.status), confidenceBucket: confidenceBucketForValues(result.candidates.map((item) => item.confidence)), durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision" });
         logAiDiagnostic({ requestId, stage: "response_completed" });
-        return res.status(200).json(parsedResult.data);
+        return res.status(200).json(result);
       } catch (error) {
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "fabric_identification", requestId, userId, outcome: "failed", confidenceBucket: "unavailable", durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision", ...(error instanceof AiError ? { errorCode: error.code } : {}) });
         return next(error);
       } finally {
         // Multer storage is memory-only. Clear this temporary buffer after use.

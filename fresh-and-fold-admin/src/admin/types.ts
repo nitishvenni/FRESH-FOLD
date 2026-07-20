@@ -83,6 +83,18 @@ export interface SupportAnalytics {
   }>;
 }
 
+export interface AiOperationsAnalytics {
+  window: { from: string; to: string };
+  totalInteractions: number;
+  byCapability: Array<{ capability: string; count: number }>;
+  byOutcome: Array<{ outcome: string; count: number }>;
+  confidenceBuckets: Array<{ bucket: string; count: number }>;
+  bySource?: Array<{ source: "typed" | "voice"; count: number }>;
+  mapping: { mappedCount: number; unmappedCount: number };
+  review: { reviewedCount: number; continuedToBookingCount: number; correctionCount: number };
+  duration: { averageMs: number | null };
+}
+
 export interface AdminNotification {
   id: string;
   type: "order" | "ticket" | "delay";

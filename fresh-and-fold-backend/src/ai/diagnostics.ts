@@ -27,7 +27,12 @@ export type AiDiagnosticStage =
   | "booking_final_response_validation"
   | "deterministic_mapping_completed"
   | "response_completed"
-  | "response_normalized_failure";
+  | "response_normalized_failure"
+  | "ai_interaction_recorded"
+  | "ai_interaction_record_failed"
+  | "ai_interaction_event_received"
+  | "ai_interaction_event_rejected"
+  | "admin_ai_analytics_aggregated";
 
 export type AiValidationCategory = "success" | "json_parse_failed" | "schema_failed";
 

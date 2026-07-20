@@ -345,7 +345,6 @@ export default function ProfileScreen() {
                   onPress: () => {
                     void triggerImpactHaptic();
                     void logout();
-                    router.replace("/login");
                   },
                 },
               ]);

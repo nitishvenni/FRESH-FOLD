@@ -17,6 +17,7 @@ import { buildStainDetectionInstructions } from "./prompts";
 import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
 import { getStainCareGuidance } from "./stainGuidance";
+import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 
 const stainInputText =
   "Analyze this single image for visible stains. Return only the requested structured output.";
@@ -138,6 +139,7 @@ export const registerStainDetectionRoutes = (
     async (req: Request, res: Response, next: NextFunction) => {
       const uploadedFile = req.file;
       const requestId = getAiRequestId(res);
+      const startedAt = Date.now();
       const providerContext = provider.getDiagnosticContext?.("vision") ?? { provider: "unknown" };
 
       try {
@@ -246,9 +248,14 @@ export const registerStainDetectionRoutes = (
           validationCategory: "success",
           status: parsedResult.data.status,
         });
+        const result = parsedResult.data;
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "stain_detection", requestId, userId, outcome: outcomeFromStatus(result.status), confidenceBucket: confidenceBucketForValues([result.confidence, ...result.candidates.map((item) => item.confidence)]), durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision" });
         logAiDiagnostic({ requestId, stage: "response_completed" });
-        return res.status(200).json(parsedResult.data);
+        return res.status(200).json(result);
       } catch (error) {
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "stain_detection", requestId, userId, outcome: "failed", confidenceBucket: "unavailable", durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision", ...(error instanceof AiError ? { errorCode: error.code } : {}) });
         return next(error);
       } finally {
         // Multer storage is memory-only. Clear this temporary buffer after use.

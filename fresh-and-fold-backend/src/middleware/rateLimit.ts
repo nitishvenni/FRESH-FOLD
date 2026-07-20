@@ -12,6 +12,8 @@ export type RateLimitOptions = {
     message: string;
     retryable?: boolean;
   };
+  /** Optional best-effort observer. It must not throw or alter the response. */
+  onRejected?: (req: AuthRequest, res: Response) => void;
 };
 
 type Bucket = {
@@ -51,6 +53,7 @@ export const createRateLimit = (options: RateLimitOptions) => {
     if (existing.count >= options.max) {
       const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
       res.setHeader("Retry-After", retryAfterSeconds.toString());
+      try { options.onRejected?.(req, res); } catch { /* telemetry is non-critical */ }
 
       if (options.error) {
         const requestId = res.locals.aiRequestId;

@@ -5,7 +5,7 @@ import RevenueHeatmap from "../components/RevenueHeatmap";
 import Skeleton from "../components/Skeleton";
 
 export default function AnalyticsPage() {
-  const { analytics, loadingAnalytics, chartData, orders } = useAdminData();
+  const { analytics, aiOperationsAnalytics, loadingAnalytics, loadingAiOperationsAnalytics, chartData, orders } = useAdminData();
 
   const heatmapValues = Object.values(
     orders.reduce<Record<string, { date: string; count: number; revenue: number }>>((acc, order) => {
@@ -48,6 +48,31 @@ export default function AnalyticsPage() {
 
       {/* Heatmap */}
       <RevenueHeatmap values={heatmapValues} />
+
+      <section style={{ ...glassCard, display: "grid", gap: 16 }} aria-label="AI Care Operations">
+        <div>
+          <p style={{ margin: 0, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontSize: 12, fontWeight: 700 }}>AI Care Operations</p>
+          <h2 style={{ margin: "8px 0 0", fontSize: 22 }}>Aggregate AI performance</h2>
+          <p style={{ ...mutedTextStyle, margin: "6px 0 0" }}>Operational metadata only. No customer requests, images, or interaction history are shown.</p>
+        </div>
+        {loadingAiOperationsAnalytics ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>{Array.from({ length: 5 }, (_, index) => <Skeleton key={index} height={76} radius={12} />)}</div>
+          : aiOperationsAnalytics ? <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              {[
+                ["Interactions", aiOperationsAnalytics.totalInteractions],
+                ["Continued to booking", aiOperationsAnalytics.review.continuedToBookingCount],
+                ["Average analysis", aiOperationsAnalytics.duration.averageMs === null ? "–" : `${(aiOperationsAnalytics.duration.averageMs / 1000).toFixed(1)}s`],
+                ["Mapped garments", aiOperationsAnalytics.mapping.mappedCount],
+                ["Review corrections", aiOperationsAnalytics.review.correctionCount],
+              ].map(([label, value]) => <div key={String(label)} style={miniCardStyle}><div style={mutedTextStyle}>{label}</div><div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{value}</div></div>)}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <div style={miniCardStyle}><strong>Outcomes by capability</strong>{aiOperationsAnalytics.byCapability.map((entry) => <div key={entry.capability} style={{ ...mutedTextStyle, marginTop: 7 }}>{entry.capability.replace(/_/g, " ")}: {entry.count}</div>)}</div>
+              <div style={miniCardStyle}><strong>Confidence buckets</strong>{aiOperationsAnalytics.confidenceBuckets.map((entry) => <div key={entry.bucket} style={{ ...mutedTextStyle, marginTop: 7 }}>{entry.bucket}: {entry.count}</div>)}</div>
+              <div style={miniCardStyle}><strong>Outcome breakdown</strong>{aiOperationsAnalytics.byOutcome.map((entry) => <div key={entry.outcome} style={{ ...mutedTextStyle, marginTop: 7 }}>{entry.outcome.replace(/_/g, " ")}: {entry.count}</div>)}{aiOperationsAnalytics.bySource?.some((entry) => entry.count > 0) ? <><strong style={{ display: "block", marginTop: 14 }}>Booking source</strong>{aiOperationsAnalytics.bySource.map((entry) => <div key={entry.source} style={{ ...mutedTextStyle, marginTop: 7 }}>{entry.source}: {entry.count}</div>)}</> : null}</div>
+            </div>
+          </> : <p style={{ ...mutedTextStyle, margin: 0 }}>No AI operations data is available for this window.</p>}
+      </section>
 
       {/* Grid: AI Support & Issues */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 24 }}>

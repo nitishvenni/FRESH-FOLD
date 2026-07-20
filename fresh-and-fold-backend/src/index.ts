@@ -27,6 +27,8 @@ import { registerStainDetectionRoutes } from "./ai/stainDetection";
 import { registerCareLabelReaderRoutes } from "./ai/careLabelReader";
 import { registerNaturalLanguageBookingRoutes } from "./ai/naturalLanguageBooking";
 import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
+import { aggregateAiInteractions, registerAiInteractionEventRoutes } from "./ai/interactionAnalytics";
+import { logAiDiagnostic } from "./ai/diagnostics";
 import { sendPushNotification } from "./utils/pushNotifications";
 import {
   buildPaymentContextHash,
@@ -201,6 +203,7 @@ app.use(
       registerStainDetectionRoutes(router);
       registerCareLabelReaderRoutes(router);
       registerNaturalLanguageBookingRoutes(router);
+      registerAiInteractionEventRoutes(router);
     },
   })
 );
@@ -1867,6 +1870,27 @@ app.get("/admin/support/analytics", adminMiddleware, async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch support analytics" });
+  }
+});
+
+app.get("/admin/ai/analytics", adminMiddleware, async (req, res) => {
+  const now = new Date();
+  const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const parseDate = (value: unknown, fallback: Date) => {
+    const parsed = typeof value === "string" ? new Date(value) : fallback;
+    return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  };
+  const from = parseDate(req.query.from, defaultFrom);
+  const to = parseDate(req.query.to, now);
+  if (from > to || to.getTime() - from.getTime() > 90 * 24 * 60 * 60 * 1000) {
+    return res.status(400).json({ success: false, message: "Use a valid date window up to 90 days." });
+  }
+  try {
+    const analytics = await aggregateAiInteractions(from, to);
+    logAiDiagnostic({ requestId: "admin_ai_analytics", stage: "admin_ai_analytics_aggregated" });
+    return res.json({ success: true, analytics: { window: { from: from.toISOString(), to: to.toISOString() }, ...analytics } });
+  } catch {
+    return res.status(500).json({ success: false, message: "Failed to fetch AI operations analytics." });
   }
 });
 

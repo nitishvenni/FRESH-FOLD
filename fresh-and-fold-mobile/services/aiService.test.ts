@@ -27,6 +27,7 @@ import {
   analyzeFabric,
   analyzeStain,
   parseNaturalLanguageBooking,
+  reportAiInteractionEvent,
 } from "./aiService";
 
 const response = (body: unknown, status = 200, requestId = "fabric_request_123") => ({
@@ -182,9 +183,17 @@ describe("Fabric Identification transport", () => {
           "Content-Type": "application/json",
           Authorization: "Bearer mobile-token",
         }),
-        body: JSON.stringify({ requestText: "Wash my shirts tomorrow evening" }),
+        body: JSON.stringify({ requestText: "Wash my shirts tomorrow evening", source: "typed" }),
       })
     );
+  });
+
+  it("sends only bounded metadata for a non-blocking lifecycle event", async () => {
+    mocks.fetch.mockResolvedValue(response({ success: true }));
+    reportAiInteractionEvent({ requestId: "booking_request_123", event: "reviewed", correctionCount: 2 });
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
+    expect(mocks.fetch).toHaveBeenCalledWith(expect.stringMatching(/\/ai\/events$/), expect.objectContaining({ body: JSON.stringify({ requestId: "booking_request_123", event: "reviewed", correctionCount: 2 }) }));
+    expect(JSON.stringify(mocks.fetch.mock.calls[0][1])).not.toMatch(/transcript|image|requestText|cleaningService|speed/i);
   });
 
   it("preserves invalid request error details without exposing provider data", async () => {

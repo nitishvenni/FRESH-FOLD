@@ -1,8 +1,8 @@
-import { Redirect, Stack, usePathname } from "expo-router";
+import { Stack, usePathname, useRootNavigationState, useRouter } from "expo-router";
 import Constants from "expo-constants";
 import * as SplashScreen from "expo-splash-screen";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from "@expo-google-fonts/inter";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Platform, Text, TextInput, View } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -13,6 +13,7 @@ import ToastHost from "../components/ToastHost";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { typography } from "../theme/theme";
 import { bootstrapNotifications } from "../utils/notifications";
+import { getAuthRedirectTarget } from "../utils/authRedirect";
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore splash lock races during reloads.
@@ -65,24 +66,30 @@ if (Constants.appOwnership !== "expo") {
 function RootNavigation() {
   const { loading, isLoggedIn } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
+  const lastRedirectRef = useRef<string | null>(null);
   const { theme, themeLoading } = useAppTheme();
-  const publicRoutes = new Set(["/", "/login", "/otp"]);
-  const isPublicRoute = publicRoutes.has(pathname);
 
   useEffect(() => {
     void bootstrapNotifications();
   }, []);
 
+  useEffect(() => {
+    if (loading || themeLoading || !rootNavigationState?.key) return;
+    const target = getAuthRedirectTarget(pathname, isLoggedIn);
+    if (!target) {
+      lastRedirectRef.current = null;
+      return;
+    }
+    const redirectKey = `${pathname}->${target}`;
+    if (lastRedirectRef.current === redirectKey) return;
+    lastRedirectRef.current = redirectKey;
+    router.replace(target);
+  }, [isLoggedIn, loading, pathname, rootNavigationState?.key, router, themeLoading]);
+
   if (loading || themeLoading) {
     return <Loader />;
-  }
-
-  if (!isLoggedIn && !isPublicRoute) {
-    return <Redirect href="/login" />;
-  }
-
-  if (isLoggedIn && isPublicRoute) {
-    return <Redirect href="/home" />;
   }
 
   const showTabs =

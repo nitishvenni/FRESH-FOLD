@@ -27,7 +27,7 @@ export const useNaturalLanguageBookingSubmission = () => {
 
   const clearError = () => setError(null);
 
-  const submit = async (requestText: string) => {
+  const submit = async (requestText: string, source: "typed" | "voice" = "typed") => {
     if (processing) return;
 
     setError(null);
@@ -36,7 +36,7 @@ export const useNaturalLanguageBookingSubmission = () => {
     setProcessing(true);
 
     try {
-      const result = await parseNaturalLanguageBooking(requestText, controller.signal);
+      const result = await parseNaturalLanguageBooking(requestText, controller.signal, source);
       if (!controller.signal.aborted) {
         router.replace({
           pathname: "/ai-booking-review" as never,

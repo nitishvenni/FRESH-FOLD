@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Redirect, useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
@@ -7,7 +7,6 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { APP_TAB_BAR_CONTENT_INSET } from "../components/AppTabBar";
 import { homeDemoContent } from "../constants/homeContent";
-import { useAuth } from "../context/AuthContext";
 import { useAppTheme } from "../hooks/useAppTheme";
 import useOrders from "../hooks/useOrders";
 import { getMostRelevantActiveOrder } from "../utils/orderStatus";
@@ -27,7 +26,6 @@ function getFirstName(name: string) {
 }
 
 export default function HomeScreen() {
-  const { isLoggedIn } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
@@ -66,10 +64,6 @@ export default function HomeScreen() {
       void loadDisplayName();
     }, [loadDisplayName])
   );
-
-  if (!isLoggedIn) {
-    return <Redirect href="/login" />;
-  }
 
   const activeOrder = getMostRelevantActiveOrder(orders);
   const startBooking = () => router.push("/select-service");

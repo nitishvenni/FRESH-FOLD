@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
@@ -15,6 +15,8 @@ import {
   setReviewItemQuantity,
 } from "../utils/aiBookingDraft";
 import { allItems, isItemKey } from "../utils/bookingData";
+import { reportAiInteractionEvent } from "../services/aiService";
+import { countNaturalLanguageCorrections } from "../utils/aiInteractionMetrics";
 
 const cleaningLabel: Record<"wash" | "dry", string> = { wash: "Wash & Iron", dry: "Dry Clean" };
 const speedLabel: Record<"standard" | "express", string> = { standard: "Standard", express: "Express" };
@@ -57,6 +59,7 @@ export default function AiBookingReviewScreen() {
   const result = useMemo(() => parseResult(resultParam), [resultParam]);
   const initialItems = useMemo(() => (result ? createBookingReviewItems(result) : []), [result]);
   const [reviewItems, setReviewItems] = useState<BookingReviewItem[]>(initialItems);
+  const initialItemsRef = useRef(initialItems);
   const defaultSelections = useMemo(() => getDefaultNaturalLanguageBookingSelections(result), [result]);
   const [acceptedCleaningService, setAcceptedCleaningService] = useState<"wash" | "dry" | undefined>(defaultSelections.cleaningService);
   const [acceptedSpeed, setAcceptedSpeed] = useState<"standard" | "express" | undefined>(defaultSelections.speed);
@@ -65,6 +68,7 @@ export default function AiBookingReviewScreen() {
 
   useEffect(() => {
     setReviewItems(initialItems);
+    initialItemsRef.current = initialItems;
     setAcceptedCleaningService(defaultSelections.cleaningService);
     setAcceptedSpeed(defaultSelections.speed);
     setReviewError(null);
@@ -89,10 +93,12 @@ export default function AiBookingReviewScreen() {
       setReviewError("Choose a quantity or remove every mapped item with an unclear quantity.");
       return;
     }
+    if (result?.requestId) reportAiInteractionEvent({ requestId: result.requestId, event: "reviewed", correctionCount: countNaturalLanguageCorrections(initialItemsRef.current, reviewItems, defaultSelections.cleaningService, acceptedCleaningService, defaultSelections.speed, acceptedSpeed) });
     if (!built.prefill) {
       router.push("/select-service");
       return;
     }
+    if (result?.requestId) reportAiInteractionEvent({ requestId: result.requestId, event: "continued_to_booking" });
     router.push({ pathname: "/select-service", params: { aiPrefill: serializeNaturalLanguageBookingPrefill(built.prefill) } });
   };
 

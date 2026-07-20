@@ -20,7 +20,7 @@ vi.mock("expo-speech-recognition", () => ({
   ExpoSpeechRecognitionModule: mocks,
 }));
 
-import { VOICE_BOOKING_LOCALE, voiceRecognition } from "./voiceRecognition";
+import { setVoiceRecognitionModuleForTests, VOICE_BOOKING_LOCALE, voiceRecognition } from "./voiceRecognition";
 
 describe("voiceRecognition", () => {
   beforeEach(() => {
@@ -31,6 +31,7 @@ describe("voiceRecognition", () => {
     mocks.stop.mockReset();
     mocks.abort.mockReset();
     mocks.addListener.mockClear();
+    setVoiceRecognitionModuleForTests(mocks as never);
   });
 
   it("requests both native permissions without retaining audio", async () => {
@@ -67,11 +68,34 @@ describe("voiceRecognition", () => {
     expect(mocks.listeners.size).toBe(0);
   });
 
+  it("forwards interim and final results without retaining their text in the adapter", () => {
+    const onResult = vi.fn();
+    voiceRecognition.subscribe({ onStart: vi.fn(), onEnd: vi.fn(), onResult, onError: vi.fn() });
+
+    mocks.listeners.get("result")?.({ isFinal: false, results: [{ transcript: "wash", confidence: 0, segments: [] }] });
+    mocks.listeners.get("result")?.({ isFinal: true, results: [{ transcript: "Wash two shirts", confidence: 0.9, segments: [] }] });
+
+    expect(onResult).toHaveBeenCalledTimes(2);
+    expect(onResult.mock.calls[1][0]).toMatchObject({ isFinal: true, results: [{ transcript: "Wash two shirts" }] });
+  });
+
+  it("reports an unavailable device recognition service before a session starts", () => {
+    mocks.isRecognitionAvailable.mockReturnValue(false);
+    expect(voiceRecognition.isAvailable()).toBe(false);
+  });
+
   it("stops and cancels through the native module without uploading audio", () => {
     voiceRecognition.stop();
     voiceRecognition.cancel();
 
     expect(mocks.stop).toHaveBeenCalledOnce();
     expect(mocks.abort).toHaveBeenCalledOnce();
+  });
+
+  it("reports unavailable when the native module is absent, as in Expo Go", async () => {
+    setVoiceRecognitionModuleForTests(null);
+
+    expect(voiceRecognition.isNativeModuleAvailable()).toBe(false);
+    await expect(voiceRecognition.requestPermission()).resolves.toBe(false);
   });
 });

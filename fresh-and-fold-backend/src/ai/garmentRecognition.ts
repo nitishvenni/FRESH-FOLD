@@ -5,11 +5,12 @@ import {
 } from "./contracts";
 import { mapDetectedGarment } from "./catalog";
 import { logAiDiagnostic, toDiagnosticAiErrorCode } from "./diagnostics";
-import { getAiRequestId } from "./errors";
+import { AiError, getAiRequestId } from "./errors";
 import { aiImageUpload, toAiImageInput, validateAiImage } from "./imageInput";
 import { buildGarmentRecognitionInstructions } from "./prompts";
 import { createAiProvider } from "./providerFactory";
 import { AiProvider } from "./provider";
+import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 
 const garmentInputText =
   "Analyze this single image for garments. Return only the requested structured output.";
@@ -28,6 +29,7 @@ export const registerGarmentRecognitionRoutes = (
     async (req: Request, res: Response, next: NextFunction) => {
       const uploadedFile = req.file;
       const requestId = getAiRequestId(res);
+      const startedAt = Date.now();
       const providerContext = provider.getDiagnosticContext?.("vision") ?? { provider: "unknown" };
 
       try {
@@ -106,10 +108,21 @@ export const registerGarmentRecognitionRoutes = (
           validationCategory: "success",
         });
         const result = parsedResult.data;
+        const userId = getAiInteractionUserId(req);
+        if (userId) {
+          void recordAiInteraction({ capability: "garment_recognition", requestId, userId,
+            outcome: outcomeFromStatus(result.status), confidenceBucket: confidenceBucketForValues(result.detections.map((item) => item.confidence)),
+            mappedCount: result.detections.filter((item) => item.mappingStatus === "mapped").length,
+            unmappedCount: result.detections.filter((item) => item.mappingStatus === "unmapped").length,
+            durationMs: Date.now() - startedAt,
+            ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision" });
+        }
         logAiDiagnostic({ requestId, stage: "response_completed" });
 
         return res.status(200).json(result);
       } catch (error) {
+        const userId = getAiInteractionUserId(req);
+        if (userId) void recordAiInteraction({ capability: "garment_recognition", requestId, userId, outcome: "failed", confidenceBucket: "unavailable", durationMs: Date.now() - startedAt, ...(providerContext.provider === "openai" || providerContext.provider === "gemini" ? { provider: providerContext.provider } : {}), modelAlias: "vision", ...(error instanceof AiError ? { errorCode: error.code } : {}) });
         return next(error);
       } finally {
         // Multer storage is memory-only. Clear this temporary buffer after use.

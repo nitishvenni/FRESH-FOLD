@@ -3,6 +3,7 @@ import { authMiddleware } from "../middleware/authMiddleware";
 import { createRateLimit, RateLimitOptions } from "../middleware/rateLimit";
 import { logAiDiagnostic } from "./diagnostics";
 import { aiErrorHandler, attachAiRequestId } from "./errors";
+import { getAiInteractionUserId, recordAiInteraction } from "./interactionAnalytics";
 
 export type AiRateLimitOptions = Omit<RateLimitOptions, "namespace" | "error"> & {
   /** Optional suffix lets isolated tests avoid sharing an in-memory bucket. */
@@ -22,6 +23,17 @@ export const createAiRateLimit = (options: AiRateLimitOptions): RequestHandler =
       code: "AI_RATE_LIMITED",
       message: "Too many AI requests. Please try again shortly.",
       retryable: true,
+    },
+    onRejected: (req, res) => {
+      const userId = getAiInteractionUserId(req);
+      const capability = req.path.startsWith("/garments/") ? "garment_recognition"
+        : req.path.startsWith("/fabric/") ? "fabric_identification"
+        : req.path.startsWith("/stain/") ? "stain_detection"
+        : req.path.startsWith("/care-label/") ? "care_label_reader"
+        : req.path.startsWith("/booking/") ? "natural_language_booking" : null;
+      if (userId && capability) void recordAiInteraction({ capability, userId,
+        requestId: String(res.locals.aiRequestId || ""), outcome: "rate_limited", confidenceBucket: "unavailable",
+        modelAlias: capability === "natural_language_booking" ? "text" : "vision", errorCode: "AI_RATE_LIMITED" });
     },
   });
 

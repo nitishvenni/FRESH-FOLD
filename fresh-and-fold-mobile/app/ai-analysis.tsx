@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
@@ -14,6 +14,8 @@ import {
   serializeSmartScanBookingPrefill,
   setReviewItemQuantity,
 } from "../utils/aiBookingDraft";
+import { reportAiInteractionEvent } from "../services/aiService";
+import { countSmartScanCorrections } from "../utils/aiInteractionMetrics";
 
 const parseResult = (value: string | string[] | undefined): GarmentRecognitionResult | null => {
   if (typeof value !== "string") return null;
@@ -43,10 +45,12 @@ export default function AiAnalysisScreen() {
     [result]
   );
   const [reviewItems, setReviewItems] = useState<BookingReviewItem[]>(initialReviewItems);
+  const initialReviewItemsRef = useRef(initialReviewItems);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     setReviewItems(initialReviewItems);
+    initialReviewItemsRef.current = initialReviewItems;
     setReviewError(null);
   }, [initialReviewItems]);
 
@@ -75,10 +79,17 @@ export default function AiAnalysisScreen() {
       return;
     }
 
+    if (result?.requestId) {
+      const correctionCount = countSmartScanCorrections(initialReviewItemsRef.current, reviewItems);
+      reportAiInteractionEvent({ requestId: result.requestId, event: "reviewed", correctionCount });
+    }
+
     if (!buildResult.prefill) {
       manualBooking();
       return;
     }
+
+    if (result?.requestId) reportAiInteractionEvent({ requestId: result.requestId, event: "continued_to_booking" });
 
     router.push({
       pathname: "/select-service",

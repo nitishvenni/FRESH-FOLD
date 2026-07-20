@@ -1,15 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { API_BASE_URL } from "./constants";
-import type { ActivityFeedItem, AdminNotification, Order, SupportAnalytics, SupportTicket } from "./types";
+import type { ActivityFeedItem, AdminNotification, AiOperationsAnalytics, Order, SupportAnalytics, SupportTicket } from "./types";
 
 type AdminContextValue = {
   orders: Order[];
   tickets: SupportTicket[];
   analytics: SupportAnalytics | null;
+  aiOperationsAnalytics: AiOperationsAnalytics | null;
   loadingOrders: boolean;
   loadingTickets: boolean;
   loadingAnalytics: boolean;
+  loadingAiOperationsAnalytics: boolean;
   newTicketAlerts: number;
   notifications: AdminNotification[];
   unreadNotificationCount: number;
@@ -70,7 +72,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [analytics, setAnalytics] = useState<SupportAnalytics | null>(null);
+  const [aiOperationsAnalytics, setAiOperationsAnalytics] = useState<AiOperationsAnalytics | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [loadingAiOperationsAnalytics, setLoadingAiOperationsAnalytics] = useState(false);
   const [newTicketAlerts, setNewTicketAlerts] = useState(0);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -141,6 +145,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setOrders([]);
     setTickets([]);
     setAnalytics(null);
+    setAiOperationsAnalytics(null);
     setNewTicketAlerts(0);
     setNotifications([]);
     setUnreadNotificationCount(0);
@@ -278,6 +283,19 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, [normalizedToken, logout]);
 
+  const fetchAiOperationsAnalytics = useCallback(async () => {
+    if (!normalizedToken) return;
+    setLoadingAiOperationsAnalytics(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/ai/analytics`, { headers: { Authorization: `Bearer ${normalizedToken}` } });
+      const data = await response.json();
+      if (response.status === 401 || response.status === 403) { logout(); return; }
+      if (!response.ok || !data.success) { setError(data.message || "Failed to load AI operations analytics"); return; }
+      setAiOperationsAnalytics(data.analytics || null);
+    } catch { setError("Server not reachable"); }
+    finally { setLoadingAiOperationsAnalytics(false); }
+  }, [normalizedToken, logout]);
+
   const playNotificationTone = useCallback(() => {
     if (!soundEnabled) return;
     const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -300,6 +318,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     void fetchOrders();
     void fetchTickets();
     void fetchSupportAnalytics();
+    void fetchAiOperationsAnalytics();
 
     const socket = io(API_BASE_URL);
     if (selectedTicketId) {
@@ -369,7 +388,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     return () => {
       socket.disconnect();
     };
-  }, [normalizedToken, selectedTicketId, fetchOrders, fetchTickets, fetchSupportAnalytics, playNotificationTone]);
+  }, [normalizedToken, selectedTicketId, fetchOrders, fetchTickets, fetchSupportAnalytics, fetchAiOperationsAnalytics, playNotificationTone]);
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
@@ -522,9 +541,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     orders,
     tickets,
     analytics,
+    aiOperationsAnalytics,
     loadingOrders,
     loadingTickets,
     loadingAnalytics,
+    loadingAiOperationsAnalytics,
     newTicketAlerts,
     notifications,
     unreadNotificationCount,
@@ -564,9 +585,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     orders,
     tickets,
     analytics,
+    aiOperationsAnalytics,
     loadingOrders,
     loadingTickets,
     loadingAnalytics,
+    loadingAiOperationsAnalytics,
     newTicketAlerts,
     notifications,
     unreadNotificationCount,

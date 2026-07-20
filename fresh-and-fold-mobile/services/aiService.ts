@@ -44,15 +44,27 @@ export const aiJsonRequest = async <T>(endpoint: string, body: unknown, signal?:
   return payload as T;
 };
 
+export type AiInteractionEvent = {
+  requestId: string;
+  event: "reviewed" | "continued_to_booking" | "cancelled";
+  correctionCount?: number;
+};
+
+/** Best-effort metadata transport. Failure is intentionally invisible to customer flows. */
+export const reportAiInteractionEvent = (event: AiInteractionEvent): void => {
+  void aiJsonRequest<{ success: true }>("/ai/events", event).catch(() => undefined);
+};
+
 /** Sends one bounded typed request to the provider-agnostic Phase G endpoint. */
 export const parseNaturalLanguageBooking = async (
   requestText: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  source: "typed" | "voice" = "typed"
 ): Promise<NaturalLanguageBookingResult> => {
   try {
     return await aiJsonRequest<NaturalLanguageBookingResult>(
       "/ai/booking/parse",
-      { requestText },
+      { requestText, source },
       signal
     );
   } catch (error) {

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Card from "../components/Card";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { useNaturalLanguageBookingSubmission } from "../hooks/useNaturalLanguageBookingSubmission";
-import { voiceRecognition, voiceRecognitionMessage, type VoiceRecognitionError } from "../services/voiceRecognition";
+import { logVoiceDiagnostic, voiceRecognition, voiceRecognitionMessage, type VoiceCleanupReason, type VoiceRecognitionError } from "../services/voiceRecognition";
 import {
   MAX_VOICE_BOOKING_TRANSCRIPT_LENGTH,
   canStartVoiceRecognition,
@@ -15,6 +15,7 @@ import {
   shouldCancelVoiceRecognitionForAppState,
   type VoiceBookingState,
 } from "../utils/voiceBookingState";
+import { isCurrentVoiceRecognitionSession, nextVoiceRecognitionSession } from "../utils/voiceRecognitionSession";
 
 
 export default function VoiceBookingScreen() {
@@ -28,6 +29,9 @@ export default function VoiceBookingScreen() {
   const voiceStateRef = useRef<VoiceBookingState>("idle");
   const transcriptRef = useRef("");
   const cancelledRef = useRef(false);
+  const mountedRef = useRef(false);
+  const sessionRef = useRef(0);
+  const recognitionStartedRef = useRef(false);
 
   const updateVoiceState = (state: VoiceBookingState) => {
     voiceStateRef.current = state;
@@ -39,8 +43,12 @@ export default function VoiceBookingScreen() {
     setTranscript(value);
   };
 
-  const cancelListening = () => {
-    if (voiceStateRef.current === "listening" || voiceStateRef.current === "stopping" || voiceStateRef.current === "requesting_permission") {
+  const cancelListening = (reason: VoiceCleanupReason = "user_cancel") => {
+    // Invalidate a pending permission request before touching the native module.
+    // A permission dialog may resolve after unmount/cancel; it must not start then.
+    sessionRef.current = nextVoiceRecognitionSession(sessionRef.current);
+    cancelledRef.current = true;
+    if (recognitionStartedRef.current) {
       cancelledRef.current = true;
       try {
         voiceRecognition.cancel();
@@ -48,13 +56,20 @@ export default function VoiceBookingScreen() {
         // Native recognition may already be released while an app-state change is processed.
       }
     }
+    recognitionStartedRef.current = false;
+    logVoiceDiagnostic("voice_cleanup_triggered", { reason });
     updateVoiceState("idle");
   };
 
   useEffect(() => {
+    mountedRef.current = true;
+    logVoiceDiagnostic("voice_screen_mounted");
     const unsubscribe = voiceRecognition.subscribe({
       onStart: () => {
-        if (!cancelledRef.current) updateVoiceState("listening");
+        if (!cancelledRef.current && mountedRef.current) {
+          recognitionStartedRef.current = true;
+          updateVoiceState("listening");
+        }
       },
       onResult: (event) => {
         if (cancelledRef.current) return;
@@ -63,6 +78,7 @@ export default function VoiceBookingScreen() {
         if (event.isFinal && nextTranscript.trim()) updateVoiceState("transcript_ready");
       },
       onEnd: () => {
+        recognitionStartedRef.current = false;
         if (cancelledRef.current) return;
         if (voiceStateRef.current === "listening" || voiceStateRef.current === "stopping") {
           updateVoiceState(transcriptRef.current.trim() ? "transcript_ready" : "idle");
@@ -77,11 +93,16 @@ export default function VoiceBookingScreen() {
     });
 
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
-      if (shouldCancelVoiceRecognitionForAppState(voiceStateRef.current, nextState)) cancelListening();
+      if (shouldCancelVoiceRecognitionForAppState(voiceStateRef.current, nextState)) {
+        logVoiceDiagnostic("voice_app_backgrounded");
+        cancelListening("background");
+      }
     });
 
     return () => {
-      cancelListening();
+      mountedRef.current = false;
+      logVoiceDiagnostic("voice_screen_unmounted");
+      cancelListening("unmount");
       unsubscribe();
       appStateSubscription.remove();
       cancelBookingRequest();
@@ -91,6 +112,8 @@ export default function VoiceBookingScreen() {
   const startListening = async () => {
     if (!canStartVoiceRecognition(voiceStateRef.current, processing)) return;
 
+    const session = nextVoiceRecognitionSession(sessionRef.current);
+    sessionRef.current = session;
     clearError();
     setVoiceError(null);
     setTranscriptValue("");
@@ -98,9 +121,13 @@ export default function VoiceBookingScreen() {
     updateVoiceState("requesting_permission");
 
     try {
-      const granted = await voiceRecognition.requestPermission();
-      if (cancelledRef.current) {
+      if (!voiceRecognition.isNativeModuleAvailable()) {
+        setVoiceError("development_build_required");
         updateVoiceState("idle");
+        return;
+      }
+      const granted = await voiceRecognition.requestPermission();
+      if (!isCurrentVoiceRecognitionSession(sessionRef.current, session, mountedRef.current)) {
         return;
       }
       if (!granted) {
@@ -114,15 +141,17 @@ export default function VoiceBookingScreen() {
         return;
       }
       voiceRecognition.start();
+      recognitionStartedRef.current = true;
       updateVoiceState("listening");
     } catch {
+      if (!isCurrentVoiceRecognitionSession(sessionRef.current, session, mountedRef.current)) return;
       setVoiceError("microphone_unavailable");
       updateVoiceState("idle");
     }
   };
 
   const stopListening = () => {
-    if (voiceStateRef.current !== "listening") return;
+    if (voiceStateRef.current !== "listening" || !recognitionStartedRef.current) return;
     updateVoiceState("stopping");
     voiceRecognition.stop();
   };
@@ -138,7 +167,7 @@ export default function VoiceBookingScreen() {
       return;
     }
     clearError();
-    void submit(requestText);
+    void submit(requestText, "voice");
   };
 
   const listening = isVoiceListening(voiceState);
@@ -175,7 +204,7 @@ export default function VoiceBookingScreen() {
           </TouchableOpacity>
           <Text style={[styles.voiceTitle, { color: theme.text }]}>{voiceState === "requesting_permission" ? "Requesting permission" : voiceState === "stopping" ? "Finishing your transcript" : listening ? "Listening…" : "Tap to speak"}</Text>
           <Text style={[styles.voiceCopy, { color: theme.textMuted }]}>{listening ? "Speak naturally, then tap Stop when you are done." : "Your words become editable text before any booking request is sent."}</Text>
-          {listening ? <View style={styles.listenActions}><TouchableOpacity accessibilityRole="button" onPress={stopListening} style={[styles.outlineButton, { borderColor: theme.border }]}><Text style={[styles.outlineText, { color: theme.text }]}>Stop</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={cancelListening} style={[styles.outlineButton, { borderColor: theme.border }]}><Text style={[styles.outlineText, { color: theme.text }]}>Cancel</Text></TouchableOpacity></View> : null}
+          {listening ? <View style={styles.listenActions}><TouchableOpacity accessibilityRole="button" onPress={stopListening} style={[styles.outlineButton, { borderColor: theme.border }]}><Text style={[styles.outlineText, { color: theme.text }]}>Stop</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => cancelListening()} style={[styles.outlineButton, { borderColor: theme.border }]}><Text style={[styles.outlineText, { color: theme.text }]}>Cancel</Text></TouchableOpacity></View> : null}
         </Card>
 
         <Text style={[styles.transcriptLabel, { color: theme.text }]}>I heard</Text>

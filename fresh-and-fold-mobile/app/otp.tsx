@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useState } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { useAppTheme } from "../hooks/useAppTheme";
@@ -20,7 +20,6 @@ import OTPInput from "../components/ui/OTPInput";
 import { radius, shadow, spacing, typography } from "../theme/theme";
 
 export default function OTPScreen() {
-  const router = useRouter();
   const { mobile } = useLocalSearchParams();
   const { login } = useAuth();
   const insets = useSafeAreaInsets();
@@ -68,7 +67,6 @@ export default function OTPScreen() {
       }
 
       await login();
-      router.replace("/home");
     } catch (error) {
       if (error instanceof Error && error.message === "Invalid OTP") {
         handleError(error);

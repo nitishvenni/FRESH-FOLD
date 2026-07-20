@@ -471,6 +471,8 @@ export type BookingDraft = z.infer<typeof BookingDraftSchema>;
 export const NaturalLanguageBookingRequestSchema = z
   .object({
     requestText: z.string().trim().min(1).max(1_000),
+    // Analytics-only source. It never reaches prompts, booking logic, or responses.
+    source: z.enum(["typed", "voice"]).optional(),
   })
   .strict();
 
