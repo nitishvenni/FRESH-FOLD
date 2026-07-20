@@ -115,6 +115,16 @@ describe("natural-language booking endpoint", () => {
     ]));
   });
 
+  it("uses contextual homophone normalization only as a provider parsing aid", async () => {
+    const provider = providerWithOutput({ status: "no_match", warnings: [] });
+    const originalTranscript = "Wash to shirts and for jackets";
+    await postRequest(createBookingApp(provider), originalTranscript).expect(200);
+    expect(provider.parse).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({ text: expect.stringContaining("Wash two shirts and four jackets") }),
+    }));
+    expect(provider.parse).toHaveBeenCalledWith(expect.not.objectContaining({ input: expect.objectContaining({ text: expect.stringContaining(originalTranscript) }) }));
+  });
+
   it("maps plural jackets without changing an explicitly requested dry service", async () => {
     const response = await postRequest(
       createBookingApp(providerWithOutput({

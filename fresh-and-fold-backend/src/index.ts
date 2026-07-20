@@ -26,7 +26,7 @@ import { registerFabricIdentificationRoutes } from "./ai/fabricIdentification";
 import { registerStainDetectionRoutes } from "./ai/stainDetection";
 import { registerCareLabelReaderRoutes } from "./ai/careLabelReader";
 import { registerNaturalLanguageBookingRoutes } from "./ai/naturalLanguageBooking";
-import { createAiRouter, createConfiguredAiRateLimit } from "./ai/router";
+import { createAiRouter, createConfiguredAiEventRateLimit, createConfiguredAiRateLimit } from "./ai/router";
 import { aggregateAiInteractions, registerAiInteractionEventRoutes } from "./ai/interactionAnalytics";
 import { logAiDiagnostic } from "./ai/diagnostics";
 import { sendPushNotification } from "./utils/pushNotifications";
@@ -197,6 +197,7 @@ app.use(
   "/ai",
   createAiRouter({
     rateLimit: createConfiguredAiRateLimit(),
+    eventRateLimit: createConfiguredAiEventRateLimit(),
     registerRoutes: (router) => {
       registerGarmentRecognitionRoutes(router);
       registerFabricIdentificationRoutes(router);

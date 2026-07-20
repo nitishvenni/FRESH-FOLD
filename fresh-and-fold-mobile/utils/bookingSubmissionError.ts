@@ -19,6 +19,14 @@ export const toBookingSubmissionError = (error: unknown): BookingSubmissionError
         retryable: false,
       };
     }
+    if (error.code === "AI_RATE_LIMITED") {
+      return {
+        title: "Please wait a moment",
+        message: "You've made several AI requests in a short time. Please wait a moment and try again.",
+        retryable: true,
+        ...(isDevelopmentBuild ? { diagnostic: toAiDevelopmentDiagnostic(error) } : {}),
+      };
+    }
     return {
       title: "Booking request could not finish",
       message: error.message,

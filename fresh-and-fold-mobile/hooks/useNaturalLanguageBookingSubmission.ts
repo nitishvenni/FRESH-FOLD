@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { parseNaturalLanguageBooking } from "../services/aiService";
 import { BookingSubmissionError, toBookingSubmissionError } from "../utils/bookingSubmissionError";
+import { canStartBookingSubmission } from "../utils/bookingSubmissionGuard";
 
 export type { BookingSubmissionError } from "../utils/bookingSubmissionError";
 
@@ -14,12 +15,14 @@ const isAbortError = (error: unknown) => error instanceof Error && error.name ==
 export const useNaturalLanguageBookingSubmission = () => {
   const router = useRouter();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const submittingRef = useRef(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<BookingSubmissionError | null>(null);
 
   const cancel = () => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
+    submittingRef.current = false;
     setProcessing(false);
   };
 
@@ -28,8 +31,9 @@ export const useNaturalLanguageBookingSubmission = () => {
   const clearError = () => setError(null);
 
   const submit = async (requestText: string, source: "typed" | "voice" = "typed") => {
-    if (processing) return;
+    if (!canStartBookingSubmission(submittingRef.current)) return;
 
+    submittingRef.current = true;
     setError(null);
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -50,6 +54,7 @@ export const useNaturalLanguageBookingSubmission = () => {
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
+        submittingRef.current = false;
         setProcessing(false);
       }
     }

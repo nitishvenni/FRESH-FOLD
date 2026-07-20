@@ -5,6 +5,7 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import {
   createAiRateLimit,
+  createAiEventRateLimit,
   createAiRouter,
   getAiRateLimitConfiguration,
 } from "../../src/ai/router";
@@ -79,6 +80,23 @@ describe("AI router middleware", () => {
       .set(authHeader())
       .set("X-Forwarded-For", "198.51.100.11")
       .expect(429);
+  });
+
+  it("keeps metadata-event limits independent from inference limits", async () => {
+    const app = express();
+    app.use("/ai", createAiRouter({
+      rateLimit: createAiRateLimit({ windowMs: 60_000, max: 1, namespaceSuffix: randomUUID() }),
+      eventRateLimit: createAiEventRateLimit({ windowMs: 60_000, max: 1, namespaceSuffix: randomUUID() }),
+      registerRoutes: (router) => {
+        router.post("/events", (_req, res) => res.json({ ok: true }));
+        router.post("/booking/parse", (_req, res) => res.json({ ok: true }));
+      },
+    }));
+
+    await request(app).post("/ai/events").set(authHeader()).send({}).expect(200);
+    await request(app).post("/ai/booking/parse").set(authHeader()).send({}).expect(200);
+    await request(app).post("/ai/events").set(authHeader()).send({}).expect(429);
+    await request(app).post("/ai/booking/parse").set(authHeader()).send({}).expect(429);
   });
 
   it("uses development defaults and production defaults unless explicitly overridden", () => {

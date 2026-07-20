@@ -16,4 +16,9 @@ describe("Natural-Language Booking submission reuse", () => {
       retryable: true,
     });
   });
+
+  it("shows a friendly rate-limit message while retaining safe development diagnostics", () => {
+    const error = toBookingSubmissionError(new AiServiceError("Too many AI requests. Please try again shortly.", { code: "AI_RATE_LIMITED", retryable: true, status: 429, requestId: "request_123" }));
+    expect(error).toMatchObject({ title: "Please wait a moment", message: expect.stringContaining("several AI requests"), retryable: true });
+  });
 });

@@ -17,6 +17,7 @@ import { buildNaturalLanguageBookingInstructions } from "./prompts";
 import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
 import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
+import { normalizeQuantityHomophonesForParsing } from "./quantityNormalization";
 
 const todayIsoDate = (): string => new Date().toISOString().slice(0, 10);
 
@@ -139,7 +140,7 @@ export const registerNaturalLanguageBookingRoutes = (
           requestId,
           modality: "text",
           instructions: buildNaturalLanguageBookingInstructions(),
-          input: { text: toProviderInput(request.data.requestText) },
+          input: { text: toProviderInput(normalizeQuantityHomophonesForParsing(request.data.requestText)) },
           schema: NaturalLanguageBookingModelOutputSchema,
           schemaName: "natural_language_booking",
         });
