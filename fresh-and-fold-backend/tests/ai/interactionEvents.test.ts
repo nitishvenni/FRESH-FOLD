@@ -29,6 +29,14 @@ describe("AI interaction lifecycle endpoint", () => {
     expect(response.body).toMatchObject({ success: true, requestId: response.headers["x-request-id"] });
     expect(update).toHaveBeenCalledWith({ requestId: "request_12345678", userId: "phase-h-user" }, { $set: { continuedToBooking: true } });
   });
+  it("records a bounded cancellation for an owned interaction without accepting customer content", async () => {
+    const update = vi.spyOn(AIInteraction, "updateOne").mockReturnValue({ exec: vi.fn().mockResolvedValue({ matchedCount: 1 }) } as any);
+    const response = await request(app()).post("/ai/events").set(auth()).send({ requestId: "request_12345678", event: "cancelled" }).expect(200);
+
+    expect(response.body).toMatchObject({ success: true, requestId: response.headers["x-request-id"] });
+    expect(update).toHaveBeenCalledWith({ requestId: "request_12345678", userId: "phase-h-user" }, { $set: { outcome: "cancelled" } });
+    expect(JSON.stringify(update.mock.calls)).not.toMatch(/transcript|requestText|image|quantity|service|speed/i);
+  });
   it("rejects a request ID that is not owned by the authenticated user", async () => {
     vi.spyOn(AIInteraction, "updateOne").mockReturnValue({ exec: vi.fn().mockResolvedValue({ matchedCount: 0 }) } as any);
     vi.spyOn(AIInteraction, "exists").mockResolvedValue(null as any);

@@ -196,6 +196,18 @@ describe("Fabric Identification transport", () => {
     expect(JSON.stringify(mocks.fetch.mock.calls[0][1])).not.toMatch(/transcript|image|requestText|cleaningService|speed/i);
   });
 
+  it("keeps a cancelled lifecycle event metadata-only and suppresses its transport failure", async () => {
+    mocks.fetch.mockRejectedValue(new Error("offline"));
+
+    expect(() => reportAiInteractionEvent({ requestId: "booking_request_123", event: "cancelled" })).not.toThrow();
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/ai\/events$/),
+      expect.objectContaining({ body: JSON.stringify({ requestId: "booking_request_123", event: "cancelled" }) })
+    );
+    expect(JSON.stringify(mocks.fetch.mock.calls[0][1])).not.toMatch(/transcript|requestText|image|quantity|service|speed/i);
+  });
+
   it("preserves invalid request error details without exposing provider data", async () => {
     mocks.fetch.mockResolvedValue(
       response(

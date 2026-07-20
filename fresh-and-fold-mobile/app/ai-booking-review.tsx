@@ -16,6 +16,7 @@ import {
 } from "../utils/aiBookingDraft";
 import { allItems, isItemKey } from "../utils/bookingData";
 import { reportAiInteractionEvent } from "../services/aiService";
+import { reportAiCancellationOnce } from "../utils/aiCancellation";
 import { countNaturalLanguageCorrections } from "../utils/aiInteractionMetrics";
 import { formatBookingDate, getRelativeBookingDateLabel, isPickupSlot, PICKUP_SLOTS } from "../utils/bookingSchedule";
 
@@ -79,6 +80,7 @@ export default function AiBookingReviewScreen() {
   const [acceptedPickupSlot, setAcceptedPickupSlot] = useState<(typeof PICKUP_SLOTS)[number]["value"] | undefined>(defaultSelections.pickupSlot);
   const [showManualItems, setShowManualItems] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const cancellationReportedRef = useRef(false);
 
   useEffect(() => {
     setReviewItems(initialItems);
@@ -88,6 +90,7 @@ export default function AiBookingReviewScreen() {
     setAcceptedPickupDate(defaultSelections.pickupDate);
     setAcceptedPickupSlot(defaultSelections.pickupSlot);
     setReviewError(null);
+    cancellationReportedRef.current = false;
   }, [initialItems, defaultSelections.cleaningService, defaultSelections.speed, defaultSelections.pickupDate, defaultSelections.pickupSlot]);
 
   const changeQuantity = (id: string, delta: number) => setReviewItems((items) => {
@@ -116,6 +119,11 @@ export default function AiBookingReviewScreen() {
     }
     if (result?.requestId) reportAiInteractionEvent({ requestId: result.requestId, event: "continued_to_booking" });
     router.push({ pathname: "/select-service", params: { aiPrefill: serializeNaturalLanguageBookingPrefill(built.prefill) } });
+  };
+
+  const discardAiDraft = () => {
+    reportAiCancellationOnce(result?.requestId, cancellationReportedRef, reportAiInteractionEvent);
+    router.replace("/ai-booking" as never);
   };
 
   return (
@@ -163,6 +171,7 @@ export default function AiBookingReviewScreen() {
         {reviewError ? <Text style={[styles.error, { color: theme.warning }]}>{reviewError}</Text> : null}
         <TouchableOpacity accessibilityRole="button" style={[styles.primaryButton, { backgroundColor: theme.primary }]} onPress={continueToBooking}><Text style={styles.primaryButtonText}>Review and Continue to Booking</Text></TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" style={[styles.secondaryButton, { borderColor: theme.border }]} onPress={() => router.replace("/ai-booking" as never)}><Text style={[styles.secondaryButtonText, { color: theme.text }]}>Edit request</Text></TouchableOpacity>
+        {result ? <TouchableOpacity accessibilityRole="button" style={[styles.secondaryButton, { borderColor: theme.border }]} onPress={discardAiDraft}><Text style={[styles.secondaryButtonText, { color: theme.text }]}>Discard AI draft</Text></TouchableOpacity> : null}
       </ScrollView>
     </View>
   );

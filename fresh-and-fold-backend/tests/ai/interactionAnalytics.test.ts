@@ -29,6 +29,18 @@ describe("Phase H interaction analytics", () => {
     expect(AiInteractionEventSchema.safeParse({ requestId: "request_12345678", event: "reviewed", correctionCount: MAX_CORRECTION_COUNT }).success).toBe(true);
     expect(AiInteractionEventSchema.safeParse({ requestId: "request_12345678", event: "reviewed", correctionCount: MAX_CORRECTION_COUNT + 1 }).success).toBe(false);
     expect(AiInteractionEventSchema.safeParse({ requestId: "request_12345678", event: "reviewed", transcript: "private" }).success).toBe(false);
+    expect(AiInteractionEventSchema.safeParse({ requestId: "request_12345678", event: "cancelled" }).success).toBe(true);
+    expect(AiInteractionEventSchema.safeParse({ requestId: "request_12345678", event: "cancelled", requestText: "private" }).success).toBe(false);
+  });
+
+  it("includes cancelled interactions in aggregate-only outcome metrics", async () => {
+    const aggregate = vi.spyOn(AIInteraction, "aggregate").mockReturnValue({
+      exec: vi.fn().mockResolvedValue([{ outcome: [{ _id: "cancelled", count: 2 }] }]),
+    } as any);
+    const result = await aggregateAiInteractions(new Date("2026-01-01"), new Date("2026-01-02"));
+
+    expect(result.byOutcome).toContainEqual({ outcome: "cancelled", count: 2 });
+    expect(JSON.stringify(result)).not.toMatch(/requestId|userId|transcript|requestText/i);
   });
 
   it("returns zero-safe aggregate-only analytics", async () => {
