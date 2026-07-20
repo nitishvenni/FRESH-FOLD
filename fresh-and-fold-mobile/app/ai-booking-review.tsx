@@ -17,12 +17,24 @@ import {
 import { allItems, isItemKey } from "../utils/bookingData";
 import { reportAiInteractionEvent } from "../services/aiService";
 import { countNaturalLanguageCorrections } from "../utils/aiInteractionMetrics";
+import { formatBookingDate, getRelativeBookingDateLabel, isPickupSlot, PICKUP_SLOTS } from "../utils/bookingSchedule";
 
 const cleaningLabel: Record<"wash" | "dry", string> = { wash: "Wash & Iron", dry: "Dry Clean" };
 const speedLabel: Record<"standard" | "express", string> = { standard: "Standard", express: "Express" };
 
-const slotSet = new Set(["9 AM - 12 PM", "12 PM - 3 PM", "3 PM - 6 PM"]);
 const unresolvedSet = new Set(["items", "quantity", "cleaning_service", "speed", "pickup_date", "pickup_slot", "special_instructions"]);
+const formatUnresolvedField = (field: string) => ({
+  items: "Items need review",
+  quantity: "Item quantities need review",
+  cleaning_service: "Cleaning service needs review",
+  speed: "Delivery speed needs review",
+  pickup_date: "Pickup date needs confirmation",
+  pickup_slot: "Pickup time needs confirmation",
+  special_instructions: "Special instructions need review",
+}[field] ?? "Booking detail needs review");
+const formatWarning = (warning: string) => warning
+  .replace(/pickup[_ ]?date/gi, "pickup date")
+  .replace(/pickup[_ ]?slot/gi, "pickup time");
 
 const parseResult = (value: string | string[] | undefined): NaturalLanguageBookingResult | null => {
   if (typeof value !== "string") return null;
@@ -37,7 +49,7 @@ const parseResult = (value: string | string[] | undefined): NaturalLanguageBooki
     );
     const validCleaningService = result.cleaningService === null || result.cleaningService === "wash" || result.cleaningService === "dry";
     const validSpeed = result.speed === null || result.speed === "standard" || result.speed === "express";
-    const validSlots = result.pickupSlot === null || slotSet.has(result.pickupSlot);
+    const validSlots = result.pickupSlot === null || isPickupSlot(result.pickupSlot);
     const validUnresolved = Array.isArray(result.unresolvedFields) && result.unresolvedFields.every((field) => unresolvedSet.has(field));
     if (
       !["complete", "partial", "no_match"].includes(result.status) || result.source !== "natural_language" ||
@@ -63,6 +75,8 @@ export default function AiBookingReviewScreen() {
   const defaultSelections = useMemo(() => getDefaultNaturalLanguageBookingSelections(result), [result]);
   const [acceptedCleaningService, setAcceptedCleaningService] = useState<"wash" | "dry" | undefined>(defaultSelections.cleaningService);
   const [acceptedSpeed, setAcceptedSpeed] = useState<"standard" | "express" | undefined>(defaultSelections.speed);
+  const [acceptedPickupDate, setAcceptedPickupDate] = useState<string | undefined>(defaultSelections.pickupDate);
+  const [acceptedPickupSlot, setAcceptedPickupSlot] = useState<(typeof PICKUP_SLOTS)[number]["value"] | undefined>(defaultSelections.pickupSlot);
   const [showManualItems, setShowManualItems] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
@@ -71,8 +85,10 @@ export default function AiBookingReviewScreen() {
     initialItemsRef.current = initialItems;
     setAcceptedCleaningService(defaultSelections.cleaningService);
     setAcceptedSpeed(defaultSelections.speed);
+    setAcceptedPickupDate(defaultSelections.pickupDate);
+    setAcceptedPickupSlot(defaultSelections.pickupSlot);
     setReviewError(null);
-  }, [initialItems, defaultSelections.cleaningService, defaultSelections.speed]);
+  }, [initialItems, defaultSelections.cleaningService, defaultSelections.speed, defaultSelections.pickupDate, defaultSelections.pickupSlot]);
 
   const changeQuantity = (id: string, delta: number) => setReviewItems((items) => {
     const item = items.find((candidate) => candidate.id === id);
@@ -88,7 +104,7 @@ export default function AiBookingReviewScreen() {
   };
 
   const continueToBooking = () => {
-    const built = buildNaturalLanguageBookingPrefill(reviewItems, acceptedCleaningService, acceptedSpeed);
+    const built = buildNaturalLanguageBookingPrefill(reviewItems, acceptedCleaningService, acceptedSpeed, acceptedPickupDate, acceptedPickupSlot);
     if (built.unresolvedQuantityItemIds.length > 0) {
       setReviewError("Choose a quantity or remove every mapped item with an unclear quantity.");
       return;
@@ -132,15 +148,16 @@ export default function AiBookingReviewScreen() {
           </Card>
 
           <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Scheduling note</Text>
-            <Text style={[styles.copy, { color: theme.textMuted }]}>Scheduling is advisory only. You will choose and confirm a date and time in the next booking step.</Text>
-            {result.pickupDate ? <Text style={[styles.note, { color: theme.text }]}>Date mentioned: {result.pickupDate}</Text> : null}
-            {result.pickupSlot ? <Text style={[styles.note, { color: theme.text }]}>Exact slot mentioned: {result.pickupSlot}</Text> : null}
+            <Text style={[styles.cardTitle, { color: theme.text }]}>Scheduling suggestions</Text>
+            <Text style={[styles.copy, { color: theme.textMuted }]}>Detected from your request. You can change and confirm both in the regular scheduling step.</Text>
+            {result.pickupDate ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Pickup date</Text><TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedPickupDate(acceptedPickupDate === result.pickupDate ? undefined : result.pickupDate ?? undefined)}><Text style={[acceptedPickupDate === result.pickupDate ? styles.accept : styles.copy, { color: acceptedPickupDate === result.pickupDate ? theme.success : theme.textMuted }]}>{acceptedPickupDate === result.pickupDate ? `✓ ${(getRelativeBookingDateLabel(result.pickupDate) ?? "Pickup date")} · ${formatBookingDate(result.pickupDate)}` : formatBookingDate(result.pickupDate)}</Text></TouchableOpacity></> : null}
+            {result.pickupSlot ? <><Text style={[styles.copy, { color: theme.textMuted }]}>Pickup time</Text><TouchableOpacity accessibilityRole="button" onPress={() => setAcceptedPickupSlot(acceptedPickupSlot === result.pickupSlot ? undefined : result.pickupSlot ?? undefined)}><Text style={[acceptedPickupSlot === result.pickupSlot ? styles.accept : styles.copy, { color: acceptedPickupSlot === result.pickupSlot ? theme.success : theme.textMuted }]}>{acceptedPickupSlot === result.pickupSlot ? `✓ ${result.pickupSlot}` : result.pickupSlot}</Text></TouchableOpacity></> : null}
+            {!result.pickupDate && !result.pickupSlot ? <Text style={[styles.copy, { color: theme.textMuted }]}>No exact date or time could be safely confirmed. Choose them in booking.</Text> : null}
             {result.pickupPreference ? <Text style={[styles.note, { color: theme.text }]}>Preference: {result.pickupPreference}</Text> : null}
           </Card>
 
           {result.specialInstructions ? <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}><Text style={[styles.cardTitle, { color: theme.text }]}>Review-only note</Text><Text style={[styles.copy, { color: theme.textMuted }]}>This note is not sent to order creation or payment.</Text><Text style={[styles.note, { color: theme.text }]}>{result.specialInstructions}</Text></Card> : null}
-          {result.unresolvedFields.length > 0 || result.warnings.length > 0 ? <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}><Text style={[styles.cardTitle, { color: theme.text }]}>Needs review</Text>{result.unresolvedFields.map((field) => <Text key={field} style={[styles.copy, { color: theme.warning }]}>• {field.replace(/_/g, " ")}</Text>)}{result.warnings.map((warning, index) => <Text key={`${warning}-${index}`} style={[styles.copy, { color: theme.textMuted }]}>• {warning}</Text>)}</Card> : null}
+          {result.unresolvedFields.length > 0 || result.warnings.length > 0 ? <Card style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}><Text style={[styles.cardTitle, { color: theme.text }]}>Needs review</Text>{result.unresolvedFields.map((field) => <Text key={field} style={[styles.copy, { color: theme.warning }]}>• {formatUnresolvedField(field)}</Text>)}{result.warnings.map((warning, index) => <Text key={`${warning}-${index}`} style={[styles.copy, { color: theme.textMuted }]}>• {formatWarning(warning)}</Text>)}</Card> : null}
         </>}
 
         {reviewError ? <Text style={[styles.error, { color: theme.warning }]}>{reviewError}</Text> : null}

@@ -18,10 +18,7 @@ import { AiProvider } from "./provider";
 import { createAiProvider } from "./providerFactory";
 import { confidenceBucketForValues, getAiInteractionUserId, outcomeFromStatus, recordAiInteraction } from "./interactionAnalytics";
 import { normalizeQuantityHomophonesForParsing } from "./quantityNormalization";
-
-const todayIsoDate = (): string => new Date().toISOString().slice(0, 10);
-
-const isPastPickupDate = (date: string): boolean => date < todayIsoDate();
+import { BOOKING_TIME_ZONE, getBusinessTodayIsoDate, normalizePickupDate, normalizePickupSlot } from "./bookingSchedule";
 
 /**
  * Turns type-safe provider output into an advisory reviewed draft. It only
@@ -56,11 +53,24 @@ export const normalizeNaturalLanguageBookingOutput = (
     ? null
     : output.cleaningService;
   const speed = unresolvedFields.has("speed") ? null : output.speed;
-  let pickupDate = output.pickupDate;
-  if (pickupDate && isPastPickupDate(pickupDate)) {
-    pickupDate = null;
+  const pickupDate = normalizePickupDate(output.pickupDate);
+  const pickupSlot = normalizePickupSlot(output.pickupSlot);
+  const warnings = [...output.warnings];
+  const hasSchedulingIntent = Boolean(output.pickupDate || output.pickupSlot || output.pickupPreference);
+  if (output.pickupDate && !pickupDate) {
     unresolvedFields.add("pickup_date");
+    warnings.push("The requested pickup date needs confirmation in scheduling.");
+  } else if (pickupDate) {
+    unresolvedFields.delete("pickup_date");
   }
+  if (output.pickupSlot && !pickupSlot) {
+    unresolvedFields.add("pickup_slot");
+    warnings.push("The requested pickup time needs confirmation in scheduling.");
+  } else if (pickupSlot) {
+    unresolvedFields.delete("pickup_slot");
+  }
+  if (hasSchedulingIntent && !pickupDate) unresolvedFields.add("pickup_date");
+  if (hasSchedulingIntent && !pickupSlot) unresolvedFields.add("pickup_slot");
 
   if (items.length === 0) {
     unresolvedFields.add("items");
@@ -78,13 +88,13 @@ export const normalizeNaturalLanguageBookingOutput = (
 
   return {
     status: shouldBePartial ? ("partial" as const) : ("complete" as const),
-    warnings: output.warnings,
+    warnings,
     source: "natural_language" as const,
     items,
     cleaningService,
     speed,
     pickupDate,
-    pickupSlot: output.pickupSlot,
+    pickupSlot,
     pickupPreference: output.pickupPreference,
     specialInstructions: output.specialInstructions,
     unresolvedFields: normalizedUnresolvedFields,
@@ -139,7 +149,10 @@ export const registerNaturalLanguageBookingRoutes = (
         output = await provider.parse({
           requestId,
           modality: "text",
-          instructions: buildNaturalLanguageBookingInstructions(),
+          instructions: buildNaturalLanguageBookingInstructions({
+            bookingTimeZone: BOOKING_TIME_ZONE,
+            currentBusinessDate: getBusinessTodayIsoDate(),
+          }),
           input: { text: toProviderInput(normalizeQuantityHomophonesForParsing(request.data.requestText)) },
           schema: NaturalLanguageBookingModelOutputSchema,
           schemaName: "natural_language_booking",

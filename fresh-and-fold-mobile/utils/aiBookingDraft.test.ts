@@ -201,12 +201,12 @@ describe("Smart Scan compact booking prefill", () => {
     expect(shouldApplySmartScanPrefill(null, undefined, hydrated)).toBe(false);
   });
 
-  it("builds a strict V3 natural-language prefill only from independently accepted dimensions", () => {
+  it("builds a strict V4 natural-language prefill only from independently accepted dimensions", () => {
     const review = createBookingReviewItems(result([mapped("shirt", 2), mapped("jeans", 1)]));
     const built = buildNaturalLanguageBookingPrefill(review, "dry", "express");
 
     expect(built).toEqual({
-      prefill: { version: 3, source: "natural_language", items: { shirt: 2, jeans: 1 }, cleaningService: "dry", speed: "express" },
+      prefill: { version: 4, source: "natural_language", items: { shirt: 2, jeans: 1 }, cleaningService: "dry", speed: "express" },
       unresolvedQuantityItemIds: [],
     });
     expect(hydrateAiBookingPrefill(serializeNaturalLanguageBookingPrefill(built.prefill!))).toEqual({
@@ -216,7 +216,7 @@ describe("Smart Scan compact booking prefill", () => {
     });
   });
 
-  it("converts reviewed plural natural-language labels into V3 canonical quantities", () => {
+  it("converts reviewed plural natural-language labels into V4 canonical quantities", () => {
     const naturalLanguageResult: NaturalLanguageBookingResult = {
       status: "complete",
       warnings: [],
@@ -239,12 +239,12 @@ describe("Smart Scan compact booking prefill", () => {
 
     expect(review.map((item) => item.detectedLabel)).toEqual(["shirts", "jeans"]);
     expect(buildNaturalLanguageBookingPrefill(review)).toEqual({
-      prefill: { version: 3, source: "natural_language", items: { shirt: 2, jeans: 1 } },
+      prefill: { version: 4, source: "natural_language", items: { shirt: 2, jeans: 1 } },
       unresolvedQuantityItemIds: [],
     });
   });
 
-  it("includes plural jackets and independent accepted dry and express values in V3", () => {
+  it("includes plural jackets and independent accepted dry and express values in V4", () => {
     const naturalLanguageResult: NaturalLanguageBookingResult = {
       status: "complete",
       warnings: [],
@@ -262,14 +262,14 @@ describe("Smart Scan compact booking prefill", () => {
     };
 
     expect(buildNaturalLanguageBookingPrefill(createBookingReviewItems(naturalLanguageResult), "dry", "express")).toEqual({
-      prefill: { version: 3, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry", speed: "express" },
+      prefill: { version: 4, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry", speed: "express" },
       unresolvedQuantityItemIds: [],
     });
   });
 
   it("allows a reviewed global speed without items and keeps V2 hydration safely compatible", () => {
     const built = buildNaturalLanguageBookingPrefill([], undefined, "express");
-    expect(built.prefill).toEqual({ version: 3, source: "natural_language", items: {}, speed: "express" });
+    expect(built.prefill).toEqual({ version: 4, source: "natural_language", items: {}, speed: "express" });
 
     expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: { shirt: 1 }, service: "dry" }))).toEqual({ items: { ...initialItems, shirt: 1 }, cleaningService: "dry", speed: "standard" });
     expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: { shirt: 1 }, service: "express" }))).toEqual({ items: { ...initialItems, shirt: 1 }, speed: "express" });
@@ -282,7 +282,7 @@ describe("Smart Scan compact booking prefill", () => {
     expect(hydrateAiBookingPrefill(JSON.stringify({ version: 2, source: "natural_language", items: {} }))).toBeNull();
   });
 
-  it("defaults explicit dry and express intent into V3 and hydrates both booking controls", () => {
+  it("defaults explicit dry and express intent into V4 and hydrates both booking controls", () => {
     const explicit: NaturalLanguageBookingResult = {
       status: "complete", warnings: [], requestId: "booking_request_explicit", requiresUserReview: true,
       source: "natural_language", items: [mapped("jacket", 2)], cleaningService: "dry", speed: "express",
@@ -291,15 +291,29 @@ describe("Smart Scan compact booking prefill", () => {
     const selections = getDefaultNaturalLanguageBookingSelections(explicit);
     expect(selections).toEqual({ cleaningService: "dry", speed: "express" });
     const prefill = buildNaturalLanguageBookingPrefill(createBookingReviewItems(explicit), selections.cleaningService, selections.speed).prefill!;
-    expect(prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry", speed: "express" });
+    expect(prefill).toEqual({ version: 4, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry", speed: "express" });
     expect(hydrateAiBookingPrefill(serializeNaturalLanguageBookingPrefill(prefill))).toEqual({ items: { ...initialItems, jacket: 2 }, cleaningService: "dry", speed: "express" });
   });
 
-  it("selects only explicit dimensions and lets a deselection exclude each from V3", () => {
+  it("selects only explicit dimensions and lets a deselection exclude each from V4", () => {
     const review = createBookingReviewItems(result([mapped("jacket", 2)]));
-    expect(buildNaturalLanguageBookingPrefill(review, "dry").prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry" });
-    expect(buildNaturalLanguageBookingPrefill(review, undefined, "express").prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 }, speed: "express" });
-    expect(buildNaturalLanguageBookingPrefill(review).prefill).toEqual({ version: 3, source: "natural_language", items: { jacket: 2 } });
+    expect(buildNaturalLanguageBookingPrefill(review, "dry").prefill).toEqual({ version: 4, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry" });
+    expect(buildNaturalLanguageBookingPrefill(review, undefined, "express").prefill).toEqual({ version: 4, source: "natural_language", items: { jacket: 2 }, speed: "express" });
+    expect(buildNaturalLanguageBookingPrefill(review).prefill).toEqual({ version: 4, source: "natural_language", items: { jacket: 2 } });
+  });
+
+  it("carries only reviewed canonical scheduling values in V4 and hydrates them without changing V3 support", () => {
+    const review = createBookingReviewItems(result([mapped("jacket", 2)]));
+    const prefill = buildNaturalLanguageBookingPrefill(review, "dry", "express", "2026-07-21", "12 PM - 3 PM").prefill!;
+    expect(prefill).toEqual({ version: 4, source: "natural_language", items: { jacket: 2 }, cleaningService: "dry", speed: "express", pickupDate: "2026-07-21", pickupSlot: "12 PM - 3 PM" });
+    expect(hydrateAiBookingPrefill(serializeNaturalLanguageBookingPrefill(prefill))).toEqual({ items: { ...initialItems, jacket: 2 }, cleaningService: "dry", speed: "express", pickupDate: "2026-07-21", pickupSlot: "12 PM - 3 PM" });
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 3, source: "natural_language", items: { shirt: 1 }, cleaningService: "wash", speed: "standard" }))).toEqual({ items: { ...initialItems, shirt: 1 }, cleaningService: "wash", speed: "standard" });
+  });
+
+  it("rejects raw request text or non-canonical scheduling data in V4", () => {
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 4, source: "natural_language", items: { shirt: 1 }, pickupDate: "tomorrow" }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 4, source: "natural_language", items: { shirt: 1 }, pickupSlot: "12pm" }))).toBeNull();
+    expect(hydrateAiBookingPrefill(JSON.stringify({ version: 4, source: "natural_language", items: { shirt: 1 }, requestText: "private" }))).toBeNull();
   });
 
   it("does not default ambiguous or unresolved booking dimensions", () => {

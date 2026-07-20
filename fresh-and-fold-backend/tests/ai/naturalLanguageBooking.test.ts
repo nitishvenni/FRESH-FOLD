@@ -58,8 +58,8 @@ describe("natural-language booking endpoint", () => {
       ],
       cleaningService: "wash",
       speed: null,
-      pickupDate: "2099-07-20",
-      pickupSlot: "9 AM - 12 PM",
+      pickupDate: "tomorrow",
+      pickupSlot: "12pm",
       pickupPreference: null,
       specialInstructions: "Please handle carefully.",
       unresolvedFields: [],
@@ -74,13 +74,16 @@ describe("natural-language booking endpoint", () => {
       requiresUserReview: true,
       cleaningService: "wash",
       speed: null,
-      pickupSlot: "9 AM - 12 PM",
+      pickupSlot: "12 PM - 3 PM",
       items: [
         { detectedLabel: "Blue T-Shirt", catalogItemId: "tshirt", mappingStatus: "mapped", quantity: 2 },
         { detectedLabel: "Black Folded Trousers", catalogItemId: "trousers", mappingStatus: "mapped", quantity: 1 },
       ],
     });
     expect(response.headers["x-request-id"]).toBe(response.body.requestId);
+    expect(response.body.pickupDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(response.body.unresolvedFields).not.toContain("pickup_date");
+    expect(response.body.unresolvedFields).not.toContain("pickup_slot");
     expect(response.body).not.toHaveProperty("price");
     expect(response.body).not.toHaveProperty("payment");
     expect(response.body).not.toHaveProperty("order");
@@ -212,7 +215,7 @@ describe("natural-language booking endpoint", () => {
       speed: null,
       pickupSlot: null,
       pickupPreference: "tomorrow evening",
-      unresolvedFields: ["cleaning_service", "items", "pickup_slot", "quantity"],
+      unresolvedFields: ["cleaning_service", "items", "pickup_date", "pickup_slot", "quantity"],
       items: [{ detectedLabel: "Shoes", catalogItemId: null, mappingStatus: "unmapped", quantity: null }],
     });
   });
@@ -264,8 +267,64 @@ describe("natural-language booking endpoint", () => {
       status: "partial",
       pickupDate: null,
       pickupPreference: "last week",
-      unresolvedFields: ["pickup_date"],
+      unresolvedFields: ["pickup_date", "pickup_slot"],
     });
+  });
+
+  it("resolves only clear relative dates and explicit times into current scheduler values", () => {
+    const normalized = normalizeNaturalLanguageBookingOutput({
+      status: "complete",
+      items: [{ detectedLabel: "Jacket", quantity: 2, confidence: 0.94 }],
+      cleaningService: "dry",
+      speed: null,
+      pickupDate: "tomorrow",
+      pickupSlot: "15:00",
+      pickupPreference: null,
+      specialInstructions: null,
+      unresolvedFields: ["pickup_date", "pickup_slot"],
+      warnings: [],
+    });
+    expect(normalized).toMatchObject({
+      cleaningService: "dry",
+      pickupSlot: "3 PM - 6 PM",
+    });
+    expect(normalized.pickupDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(normalized.unresolvedFields).not.toContain("pickup_date");
+    expect(normalized.unresolvedFields).not.toContain("pickup_slot");
+  });
+
+  it("keeps vague or out-of-window scheduling intent unresolved", () => {
+    const normalized = normalizeNaturalLanguageBookingOutput({
+      status: "complete",
+      items: [{ detectedLabel: "Shirt", quantity: 2, confidence: 0.94 }],
+      cleaningService: "wash",
+      speed: null,
+      pickupDate: "tomorrow",
+      pickupSlot: "around 5",
+      pickupPreference: "tomorrow afternoon",
+      specialInstructions: null,
+      unresolvedFields: [],
+      warnings: [],
+    });
+    expect(normalized).toMatchObject({ pickupSlot: null, pickupPreference: "tomorrow afternoon" });
+    expect(normalized.unresolvedFields).toContain("pickup_slot");
+  });
+
+  it("keeps the missing scheduling dimension reviewable when only a date or time is clear", () => {
+    const dateOnly = normalizeNaturalLanguageBookingOutput({
+      status: "complete", items: [{ detectedLabel: "Shirt", quantity: 2, confidence: 0.94 }],
+      cleaningService: "wash", speed: null, pickupDate: "tomorrow", pickupSlot: null,
+      pickupPreference: null, specialInstructions: null, unresolvedFields: [], warnings: [],
+    });
+    const timeOnly = normalizeNaturalLanguageBookingOutput({
+      status: "complete", items: [{ detectedLabel: "Shirt", quantity: 2, confidence: 0.94 }],
+      cleaningService: "wash", speed: null, pickupDate: null, pickupSlot: "12 PM",
+      pickupPreference: null, specialInstructions: null, unresolvedFields: [], warnings: [],
+    });
+    expect(dateOnly).toMatchObject({ pickupSlot: null });
+    expect(dateOnly.unresolvedFields).toContain("pickup_slot");
+    expect(timeOnly).toMatchObject({ pickupDate: null, pickupSlot: "12 PM - 3 PM" });
+    expect(timeOnly.unresolvedFields).toContain("pickup_date");
   });
 
   it.each([

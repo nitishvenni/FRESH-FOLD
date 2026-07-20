@@ -4,10 +4,12 @@ import type {
   GarmentRecognitionResult,
   NaturalLanguageBookingPrefill,
   NaturalLanguageBookingPrefillV3,
+  NaturalLanguageBookingPrefillV4,
   NaturalLanguageBookingResult,
   SmartScanBookingPrefill,
 } from "../types/ai";
 import { initialItems, isItemKey, itemKeys, ItemState } from "./bookingData";
+import { isPickupSlot, PICKUP_SLOTS, type PickupSlot } from "./bookingSchedule";
 
 const PositiveQuantitySchema = z.number().finite().int().positive();
 
@@ -37,6 +39,7 @@ export const SmartScanBookingPrefillSchema = z
 const ServiceIdSchema = z.enum(["wash", "dry", "express"]);
 const CleaningServiceSchema = z.enum(["wash", "dry"]);
 const FulfillmentSpeedSchema = z.enum(["standard", "express"]);
+const PickupSlotSchema = z.enum(PICKUP_SLOTS.map((slot) => slot.value) as [PickupSlot, ...PickupSlot[]]);
 
 /** Phase G's compact reviewed route state; V1 Smart Scan remains unchanged. */
 export const NaturalLanguageBookingPrefillSchema = z
@@ -72,6 +75,21 @@ const AnyAiBookingPrefillSchema = z.union([
     speed: FulfillmentSpeedSchema.optional(),
   }).strict().superRefine((prefill, context) => {
     if (Object.keys(prefill.items).length === 0 && !prefill.cleaningService && !prefill.speed) {
+      context.addIssue({ code: "custom", message: "A reviewed item or booking choice is required." });
+    }
+  }),
+  z.object({
+    version: z.literal(4),
+    source: z.literal("natural_language"),
+    items: z.record(z.string(), PositiveQuantitySchema).superRefine((items, context) => {
+      for (const key of Object.keys(items)) if (!isItemKey(key)) context.addIssue({ code: "custom", message: "Unsupported catalog item." });
+    }),
+    cleaningService: CleaningServiceSchema.optional(),
+    speed: FulfillmentSpeedSchema.optional(),
+    pickupDate: z.string().date().optional(),
+    pickupSlot: PickupSlotSchema.optional(),
+  }).strict().superRefine((prefill, context) => {
+    if (Object.keys(prefill.items).length === 0 && !prefill.cleaningService && !prefill.speed && !prefill.pickupDate && !prefill.pickupSlot) {
       context.addIssue({ code: "custom", message: "A reviewed item or booking choice is required." });
     }
   }),
@@ -169,7 +187,7 @@ const buildCompactReviewedItems = (reviewItems: BookingReviewItem[]) =>
   }, {});
 
 export type NaturalLanguagePrefillBuildResult = {
-  prefill: NaturalLanguageBookingPrefillV3 | null;
+  prefill: NaturalLanguageBookingPrefillV4 | null;
   unresolvedQuantityItemIds: string[];
 };
 
@@ -183,6 +201,8 @@ export const getDefaultNaturalLanguageBookingSelections = (
 ): {
   cleaningService?: "wash" | "dry";
   speed?: "standard" | "express";
+  pickupDate?: string;
+  pickupSlot?: NaturalLanguageBookingPrefillV4["pickupSlot"];
 } => {
   if (!result) return {};
   return {
@@ -192,14 +212,22 @@ export const getDefaultNaturalLanguageBookingSelections = (
     ...(result.speed && !result.unresolvedFields.includes("speed")
       ? { speed: result.speed }
       : {}),
+    ...(result.pickupDate && !result.unresolvedFields.includes("pickup_date")
+      ? { pickupDate: result.pickupDate }
+      : {}),
+    ...(result.pickupSlot && !result.unresolvedFields.includes("pickup_slot") && isPickupSlot(result.pickupSlot)
+      ? { pickupSlot: result.pickupSlot }
+      : {}),
   };
 };
 
-/** Builds Phase G.1's V3 payload only from reviewed items and accepted dimensions. */
+/** Builds V4 only from reviewed values; it never carries raw AI scheduling text. */
 export const buildNaturalLanguageBookingPrefill = (
   reviewItems: BookingReviewItem[],
   acceptedCleaningService?: NaturalLanguageBookingPrefillV3["cleaningService"],
-  acceptedSpeed?: NaturalLanguageBookingPrefillV3["speed"]
+  acceptedSpeed?: NaturalLanguageBookingPrefillV3["speed"],
+  acceptedPickupDate?: NaturalLanguageBookingPrefillV4["pickupDate"],
+  acceptedPickupSlot?: NaturalLanguageBookingPrefillV4["pickupSlot"]
 ): NaturalLanguagePrefillBuildResult => {
   const unresolvedQuantityItemIds = reviewItems
     .filter((item) => !item.removed && item.catalogItemId && !isPositiveQuantity(item.quantity))
@@ -210,24 +238,26 @@ export const buildNaturalLanguageBookingPrefill = (
   }
 
   const items = buildCompactReviewedItems(reviewItems);
-  if (Object.keys(items).length === 0 && !acceptedCleaningService && !acceptedSpeed) {
+  if (Object.keys(items).length === 0 && !acceptedCleaningService && !acceptedSpeed && !acceptedPickupDate && !acceptedPickupSlot) {
     return { prefill: null, unresolvedQuantityItemIds: [] };
   }
 
   const parsed = AnyAiBookingPrefillSchema.safeParse({
-    version: 3,
+    version: 4,
     source: "natural_language",
     items,
     ...(acceptedCleaningService ? { cleaningService: acceptedCleaningService } : {}),
     ...(acceptedSpeed ? { speed: acceptedSpeed } : {}),
+    ...(acceptedPickupDate ? { pickupDate: acceptedPickupDate } : {}),
+    ...(acceptedPickupSlot ? { pickupSlot: acceptedPickupSlot } : {}),
   });
 
   return parsed.success
-    ? { prefill: parsed.data as NaturalLanguageBookingPrefillV3, unresolvedQuantityItemIds: [] }
+    ? { prefill: parsed.data as NaturalLanguageBookingPrefillV4, unresolvedQuantityItemIds: [] }
     : { prefill: null, unresolvedQuantityItemIds: [] };
 };
 
-export const serializeNaturalLanguageBookingPrefill = (prefill: NaturalLanguageBookingPrefillV3): string =>
+export const serializeNaturalLanguageBookingPrefill = (prefill: NaturalLanguageBookingPrefillV4): string =>
   JSON.stringify(AnyAiBookingPrefillSchema.parse(prefill));
 
 /** Validates the complete route payload. Invalid state is never partially applied. */
@@ -250,6 +280,8 @@ export type HydratedAiBookingPrefill = {
   items: ItemState;
   cleaningService?: "wash" | "dry";
   speed?: "standard" | "express";
+  pickupDate?: string;
+  pickupSlot?: NaturalLanguageBookingPrefillV4["pickupSlot"];
 };
 
 /** Validates either approved compact version before applying it to booking controls. */
@@ -273,6 +305,14 @@ export const hydrateAiBookingPrefill = (
         ? {
             ...(parsed.data.cleaningService ? { cleaningService: parsed.data.cleaningService } : {}),
             ...(parsed.data.speed ? { speed: parsed.data.speed } : {}),
+          }
+        : {}),
+      ...(parsed.data.source === "natural_language" && parsed.data.version === 4
+        ? {
+            ...(parsed.data.cleaningService ? { cleaningService: parsed.data.cleaningService } : {}),
+            ...(parsed.data.speed ? { speed: parsed.data.speed } : {}),
+            ...(parsed.data.pickupDate ? { pickupDate: parsed.data.pickupDate } : {}),
+            ...(parsed.data.pickupSlot ? { pickupSlot: parsed.data.pickupSlot } : {}),
           }
         : {}),
     };

@@ -44,6 +44,8 @@ export default function SelectService() {
   const [selectedCleaningService, setSelectedCleaningService] = useState<ServiceType>("wash");
   const [selectedCategory, setSelectedCategory] = useState<Category>("all");
   const [items, setItems] = useState(initialItems);
+  const [suggestedPickupDate, setSuggestedPickupDate] = useState<string | undefined>();
+  const [suggestedPickupSlot, setSuggestedPickupSlot] = useState<string | undefined>();
   const appliedPrefillRouteValue = useRef<string | null>(null);
   const hydratedPrefill = useMemo(
     () => hydrateAiBookingPrefill(params.aiPrefill),
@@ -62,6 +64,8 @@ export default function SelectService() {
       setItems(hydratedPrefill.items);
       if (hydratedPrefill.cleaningService) setSelectedCleaningService(hydratedPrefill.cleaningService);
       if (hydratedPrefill.speed) setSelectedSpeed(hydratedPrefill.speed);
+      if (hydratedPrefill.pickupDate) setSuggestedPickupDate(hydratedPrefill.pickupDate);
+      if (hydratedPrefill.pickupSlot) setSuggestedPickupSlot(hydratedPrefill.pickupSlot);
       appliedPrefillRouteValue.current = params.aiPrefill;
     }
   }, [hydratedPrefill, params.aiPrefill]);
@@ -92,6 +96,8 @@ export default function SelectService() {
         speed: selectedSpeed,
         items: JSON.stringify(items),
         total: totalAmount,
+        ...(suggestedPickupDate ? { suggestedPickupDate } : {}),
+        ...(suggestedPickupSlot ? { suggestedPickupSlot } : {}),
       },
     });
   };

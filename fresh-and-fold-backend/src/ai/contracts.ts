@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PICKUP_SLOTS } from "./bookingSchedule";
 
 export const AnalysisStatusSchema = z.enum([
   "complete",
@@ -480,9 +481,7 @@ export const NaturalLanguageBookingStatusSchema = z.enum(["complete", "partial",
 
 /** Only slots that exist in the current scheduler can be represented. */
 export const PickupSlotSchema = z.enum([
-  "9 AM - 12 PM",
-  "12 PM - 3 PM",
-  "3 PM - 6 PM",
+  ...PICKUP_SLOTS,
 ]);
 
 /** Bounded application fields make uncertainty reviewable without echoing raw text. */
@@ -506,8 +505,10 @@ export const NaturalLanguageBookingModelOutputSchema = z
     items: z.array(DetectedGarmentSchema).max(30).optional().default([]),
     cleaningService: CleaningServiceSchema.nullable().optional().default(null),
     speed: FulfillmentSpeedSchema.nullable().optional().default(null),
-    pickupDate: z.string().date().nullable().optional().default(null),
-    pickupSlot: PickupSlotSchema.nullable().optional().default(null),
+    // The provider may preserve an explicit date/time expression. Application
+    // code, not the provider, resolves it into a canonical booking value.
+    pickupDate: z.string().trim().min(1).max(40).nullable().optional().default(null),
+    pickupSlot: z.string().trim().min(1).max(120).nullable().optional().default(null),
     pickupPreference: z.string().trim().min(1).max(240).nullable().optional().default(null),
     specialInstructions: z.string().trim().max(1_000).nullable().optional().default(null),
     unresolvedFields: z.array(BookingUnresolvedFieldSchema).max(20).optional().default([]),

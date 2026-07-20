@@ -93,6 +93,17 @@ export type NaturalLanguageBookingPrefillV3 = {
   speed?: "standard" | "express";
 };
 
+/** V4 adds only user-reviewed, canonically validated scheduling suggestions. */
+export type NaturalLanguageBookingPrefillV4 = {
+  version: 4;
+  source: "natural_language";
+  items: Partial<Record<ItemKey, number>>;
+  cleaningService?: "wash" | "dry";
+  speed?: "standard" | "express";
+  pickupDate?: string;
+  pickupSlot?: "9 AM - 12 PM" | "12 PM - 3 PM" | "3 PM - 6 PM";
+};
+
 export type GarmentRecognitionResult = {
   status: AiAnalysisStatus;
   warnings: string[];

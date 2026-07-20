@@ -1,46 +1,31 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateChip from "../components/DateChip";
 import TimeSlotCard from "../components/TimeSlotCard";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "../utils/haptics";
-
-const formatDateValue = (date: Date) =>
-  new Intl.DateTimeFormat("en-IN", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  }).format(date);
-
-const dates = Array.from({ length: 4 }, (_, index) => {
-  const date = new Date();
-  date.setDate(date.getDate() + index);
-
-  return {
-    month: new Intl.DateTimeFormat("en-IN", { month: "short" }).format(date).toUpperCase(),
-    date: new Intl.DateTimeFormat("en-IN", { day: "2-digit" }).format(date),
-    day: new Intl.DateTimeFormat("en-IN", { weekday: "short" }).format(date),
-    value: formatDateValue(date),
-  };
-});
-
-const slots = [
-  { value: "9 AM - 12 PM", description: "Morning slot" },
-  { value: "12 PM - 3 PM", description: "Afternoon slot" },
-  { value: "3 PM - 6 PM", description: "Evening slot" },
-];
+import { getBookingDateOptions, isPickupSlot, PICKUP_SLOTS } from "../utils/bookingSchedule";
 
 export default function ScheduleBasic() {
   const router = useRouter();
-  const { cleaningService, speed, items } = useLocalSearchParams();
+  const { cleaningService, speed, items, suggestedPickupDate, suggestedPickupSlot } = useLocalSearchParams<{
+    cleaningService?: string; speed?: string; items?: string; suggestedPickupDate?: string; suggestedPickupSlot?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const dates = useMemo(() => getBookingDateOptions(), []);
+  const [selectedDate, setSelectedDate] = useState<string | null>(() =>
+    typeof suggestedPickupDate === "string"
+      ? dates.find((date) => date.isoDate === suggestedPickupDate)?.value ?? null
+      : null
+  );
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(() =>
+    isPickupSlot(suggestedPickupSlot) ? suggestedPickupSlot : null
+  );
 
   const canContinue = !!selectedDate && !!selectedSlot;
 
@@ -160,7 +145,7 @@ export default function ScheduleBasic() {
 
         <View style={[styles.section, styles.timeSlotSection]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Time Slot</Text>
-          {slots.map((slot) => (
+          {PICKUP_SLOTS.map((slot) => (
             <TimeSlotCard
               key={slot.value}
               slot={slot.value}
