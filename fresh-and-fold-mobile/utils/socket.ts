@@ -10,7 +10,7 @@ const socketOptions = {
 export const orderSocket = io(API_BASE_URL, socketOptions);
 export const supportSocket = io(API_BASE_URL, socketOptions);
 
-if (__DEV__) {
+if (typeof __DEV__ !== "undefined" && __DEV__) {
   orderSocket.on("connect", () => console.log(`[OrderSocket] connected: ${orderSocket.id}`));
   orderSocket.on("disconnect", (reason) => console.log(`[OrderSocket] disconnected: ${reason}`));
   orderSocket.on("connect_error", (error) => console.log(`[OrderSocket] connect_error: ${error.message}`));

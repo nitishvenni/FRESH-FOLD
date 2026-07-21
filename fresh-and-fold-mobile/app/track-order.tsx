@@ -78,16 +78,18 @@ const getStepIcon = (normalizedStep: string, color: string, size: number) => {
 
 export default function TrackOrder() {
   const router = useRouter();
-  const { orderId, status } = useLocalSearchParams();
+  const { status } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
+  const rawOrderId = useLocalSearchParams().orderId;
+  const orderId = Array.isArray(rawOrderId) ? rawOrderId[0] : rawOrderId;
   
-  const [order, setOrder] = useState<Order | null>(
+  const [order, setOrder] = useState<Order | null>(() =>
     orderId
-      ? {
-          _id: String(orderId),
-          status: String(status || "Scheduled"),
-        }
+      ? ({
+          _id: orderId,
+          status: "Scheduled",
+        } as Order)
       : null
   );
   const [loading, setLoading] = useState(!orderId);
@@ -101,7 +103,7 @@ export default function TrackOrder() {
   useEffect(() => {
     const handleOrderUpdated = (updatedOrder: OrderStatusUpdate) => {
       console.log("[OrderSocket] orderUpdated received");
-      if (updatedOrder?.orderId === String(orderId) && updatedOrder.status) {
+      if (updatedOrder?.orderId === orderId && updatedOrder.status) {
         void fetchOrder();
       }
     };
@@ -135,7 +137,7 @@ export default function TrackOrder() {
   const fetchOrder = async () => {
     try {
       const data = await apiRequest<{ success: boolean; orders: Order[] }>("/orders");
-      const found = data.orders.find((item) => String(item._id) === String(orderId));
+      const found = data.orders.find((item) => item._id === orderId);
       setOrder(found || null);
     } catch (error) {
       if (!order) {
