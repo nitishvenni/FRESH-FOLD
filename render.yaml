@@ -24,9 +24,15 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
-      - key: MSG91_AUTH_KEY
+      - key: FAST2SMS_API_KEY
         sync: false
-      - key: MSG91_TEMPLATE_ID
+      - key: FAST2SMS_OTP_ID
+        sync: false
+      - key: OTP_DEMO_MODE
+        value: "false"
+      - key: OTP_DEMO_MOBILE
+        sync: false
+      - key: OTP_DEMO_CODE
         sync: false
       - key: PORT
         value: "10000"

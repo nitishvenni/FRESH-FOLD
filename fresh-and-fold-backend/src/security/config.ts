@@ -1,4 +1,5 @@
 import { getAiConfig } from "../ai/config";
+import { getOtpDemoConfiguration, isOtpDemoModeRequested } from "../auth/otpDemo";
 import { getHttpCorsOrigins } from "./http";
 import { getSocketCorsOrigins } from "../realtime/socketSecurity";
 
@@ -27,8 +28,18 @@ export const validateProductionEnvironment = (environment: ProductionEnvironment
   if (String(environment.JWT_SECRET || "").trim().length < 32) {
     issues.push("JWT_SECRET must be at least 32 characters in production");
   }
-  required(environment, "MSG91_AUTH_KEY", issues);
-  required(environment, "MSG91_TEMPLATE_ID", issues);
+  if (String(environment.OTP_LOCAL_DEV_MODE || "").toLowerCase() === "true") {
+    issues.push("OTP_LOCAL_DEV_MODE cannot be enabled in production");
+  }
+  const demoModeRequested = isOtpDemoModeRequested(environment);
+  const demoConfiguration = getOtpDemoConfiguration(environment);
+  if (demoModeRequested && !demoConfiguration) {
+    issues.push("OTP_DEMO_MODE requires a valid OTP_DEMO_MOBILE and six-digit OTP_DEMO_CODE in production");
+  }
+  if (!demoModeRequested) {
+    required(environment, "FAST2SMS_API_KEY", issues);
+    required(environment, "FAST2SMS_OTP_ID", issues);
+  }
 
   try {
     getHttpCorsOrigins({

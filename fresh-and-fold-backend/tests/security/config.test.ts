@@ -8,8 +8,8 @@ const validProductionEnvironment: NodeJS.ProcessEnv = {
   HTTP_CORS_ORIGINS: "https://admin.example.com",
   SOCKET_CORS_ORIGINS: "https://admin.example.com",
   BOOKING_TIME_ZONE: "Asia/Kolkata",
-  MSG91_AUTH_KEY: "msg91-key",
-  MSG91_TEMPLATE_ID: "template-id",
+  FAST2SMS_API_KEY: "fast2sms-key",
+  FAST2SMS_OTP_ID: "fast2sms-otp-template",
   RAZORPAY_KEY_ID: "rzp_live_test",
   RAZORPAY_KEY_SECRET: "razorpay-secret",
   RAZORPAY_WEBHOOK_SECRET: "webhook-secret",
@@ -40,5 +40,36 @@ describe("production environment validation", () => {
       GEMINI_TEXT_MODEL: "",
     };
     expect(() => validateProductionEnvironment(openAi)).not.toThrow();
+  });
+
+  it("requires Fast2SMS delivery configuration in production even when local OTP mode is requested", () => {
+    const missingFast2Sms = {
+      ...validProductionEnvironment,
+      FAST2SMS_API_KEY: "",
+      FAST2SMS_OTP_ID: "",
+      OTP_LOCAL_DEV_MODE: "true",
+    };
+    expect(() => validateProductionEnvironment(missingFast2Sms)).toThrow(/FAST2SMS_API_KEY.*FAST2SMS_OTP_ID/s);
+  });
+
+  it("allows an explicitly configured evaluator-only production deployment without Fast2SMS", () => {
+    const demoOnly = {
+      ...validProductionEnvironment,
+      FAST2SMS_API_KEY: "",
+      FAST2SMS_OTP_ID: "",
+      OTP_DEMO_MODE: "true",
+      OTP_DEMO_MOBILE: "+91 9876543210",
+      OTP_DEMO_CODE: "123456",
+    };
+    expect(() => validateProductionEnvironment(demoOnly)).not.toThrow();
+  });
+
+  it("fails closed for invalid demo configuration and production local OTP mode", () => {
+    expect(() => validateProductionEnvironment({
+      ...validProductionEnvironment, OTP_DEMO_MODE: "true", OTP_DEMO_MOBILE: "invalid", OTP_DEMO_CODE: "12345",
+    })).toThrow(/OTP_DEMO_MODE requires/);
+    expect(() => validateProductionEnvironment({
+      ...validProductionEnvironment, OTP_LOCAL_DEV_MODE: "true",
+    })).toThrow(/OTP_LOCAL_DEV_MODE cannot be enabled/);
   });
 });

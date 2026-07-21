@@ -23,6 +23,8 @@ import OtpChallenge from "./models/OtpChallenge";
 import { authMiddleware, AuthRequest } from "./middleware/authMiddleware";
 import { createRateLimit } from "./middleware/rateLimit";
 import { createOtpHash, createOtpRateLimit, createSecureOtp, normalizeIndianMobile, secureOtpMatch } from "./auth/otp";
+import { getOtpDemoConfiguration, selectOtpDeliveryMode } from "./auth/otpDemo";
+import { getFast2SmsConfiguration, OtpDeliveryError, sendOtpSms } from "./auth/otpDelivery";
 import { registerGarmentRecognitionRoutes } from "./ai/garmentRecognition";
 import { registerFabricIdentificationRoutes } from "./ai/fabricIdentification";
 import { registerStainDetectionRoutes } from "./ai/stainDetection";
@@ -77,10 +79,9 @@ const mongoUri = String(process.env.MONGO_URI || "").trim();
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 const razorpayWebhookSecret = String(process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
-const msg91AuthKey = String(process.env.MSG91_AUTH_KEY || "").trim();
-const msg91TemplateId = String(process.env.MSG91_TEMPLATE_ID || "").trim();
-const msg91CountryCode = String(process.env.MSG91_COUNTRY_CODE || "91").trim();
-const msg91OtpEnabled = Boolean(msg91AuthKey && msg91TemplateId);
+const fast2SmsConfiguration = getFast2SmsConfiguration();
+const fast2SmsOtpEnabled = Boolean(fast2SmsConfiguration);
+const otpDemoConfiguration = getOtpDemoConfiguration();
 const otpExpirySeconds = Math.max(60, Number(process.env.OTP_EXPIRY_SECONDS) || 300);
 const otpResendCooldownSeconds = Math.max(30, Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60);
 const otpMaxVerifyAttempts = Math.max(3, Number(process.env.OTP_MAX_VERIFY_ATTEMPTS) || 5);
@@ -127,54 +128,6 @@ const supportEscalateLimiter = createRateLimit({
 const SUPPORT_CONFIDENCE_THRESHOLD = 0.7;
 const RESPONSE_SLA_MINUTES = 15;
 const RESOLUTION_SLA_MINUTES = 240;
-
-const buildMsg91Mobile = (mobile: string) => `${msg91CountryCode}${mobile}`;
-
-const sendOtpViaMsg91 = async (mobile: string) => {
-  const params = new URLSearchParams({
-    template_id: msg91TemplateId,
-    mobile: buildMsg91Mobile(mobile),
-    authkey: msg91AuthKey,
-  });
-
-  const response = await fetch(`https://control.msg91.com/api/v5/otp?${params.toString()}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
-
-  const data = (await response.json().catch(() => ({}))) as Record<string, any>;
-
-  if (!response.ok) {
-    throw new Error(String(data?.message || "MSG91 send OTP request failed"));
-  }
-
-  return data;
-};
-
-const verifyOtpViaMsg91 = async (mobile: string, otp: string) => {
-  const params = new URLSearchParams({
-    otp,
-    mobile: buildMsg91Mobile(mobile),
-  });
-
-  const response = await fetch(`https://control.msg91.com/api/v5/otp/verify?${params.toString()}`, {
-    method: "GET",
-    headers: {
-      authkey: msg91AuthKey,
-    },
-  });
-
-  const data = (await response.json().catch(() => ({}))) as Record<string, any>;
-  const verifiedMessage = String(data?.message || "").toLowerCase();
-
-  if (!response.ok || !verifiedMessage.includes("verified")) {
-    throw new Error(String(data?.message || "MSG91 OTP verification failed"));
-  }
-
-  return data;
-};
 
 validateProductionEnvironment();
 
@@ -514,20 +467,22 @@ app.post("/auth/send-otp", sendOtpIpLimiter, sendOtpMobileLimiter, async (req, r
     const mobile = normalizeIndianMobile(req.body?.mobile);
     if (!mobile) return res.status(400).json({ message: "Invalid mobile number" });
     if (mongoose.connection.readyState !== 1) return res.status(503).json({ message: "Database unavailable" });
-    if (!msg91OtpEnabled && !localDevOtpEnabled) {
+    const deliveryMode = selectOtpDeliveryMode(mobile, otpDemoConfiguration, fast2SmsOtpEnabled, localDevOtpEnabled);
+    if (!deliveryMode) {
       return res.status(503).json({ code: "OTP_UNAVAILABLE", message: "Verification is temporarily unavailable" });
     }
 
     const now = new Date();
-    const otp = msg91OtpEnabled ? null : (/^\d{6}$/.test(localDevOtpCode) ? localDevOtpCode : createSecureOtp());
-    const provider = msg91OtpEnabled ? "msg91" : "local";
+    const otp = deliveryMode === "demo" ? otpDemoConfiguration!.code :
+      (localDevOtpEnabled && /^\d{6}$/.test(localDevOtpCode) ? localDevOtpCode : createSecureOtp());
+    const provider = deliveryMode;
     const expiresAt = new Date(now.getTime() + otpExpirySeconds * 1000);
     const resendAvailableAt = new Date(now.getTime() + otpResendCooldownSeconds * 1000);
     let challenge: any;
     try {
       challenge = await OtpChallenge.findOneAndUpdate(
         { mobile, $or: [{ resendAvailableAt: { $lte: now } }, { resendAvailableAt: { $exists: false } }] },
-        { $set: { provider, otpHash: otp ? createOtpHash(mobile, otp, String(process.env.JWT_SECRET || "")) : null, expiresAt, resendAvailableAt, failedAttempts: 0, consumedAt: null, lockedAt: null } },
+        { $set: { provider, otpHash: createOtpHash(mobile, otp, String(process.env.JWT_SECRET || "")), expiresAt, resendAvailableAt, failedAttempts: 0, consumedAt: null, lockedAt: null } },
         { new: true, upsert: true, setDefaultsOnInsert: true }
       );
     } catch (error: any) {
@@ -536,10 +491,15 @@ app.post("/auth/send-otp", sendOtpIpLimiter, sendOtpMobileLimiter, async (req, r
     }
 
     try {
-      if (provider === "msg91") await sendOtpViaMsg91(mobile);
+      if (provider === "fast2sms" && fast2SmsConfiguration) {
+        await sendOtpSms({ mobile, otp, expirySeconds: otpExpirySeconds, configuration: fast2SmsConfiguration });
+      }
       else if (process.env.NODE_ENV === "development") console.info(`[otp] local development code: ${otp}`);
-    } catch {
+    } catch (error) {
       await OtpChallenge.deleteOne({ _id: challenge._id, mobile });
+      if (error instanceof OtpDeliveryError) {
+        console.warn("OTP delivery unavailable", { provider: "fast2sms", category: error.category, ...(error.status ? { status: error.status } : {}) });
+      }
       return res.status(503).json({ code: "OTP_UNAVAILABLE", message: "Verification is temporarily unavailable" });
     }
 
@@ -580,13 +540,9 @@ app.post("/auth/verify-otp", verifyOtpIpLimiter, verifyOtpMobileLimiter, async (
     };
 
     if (!challenge || challenge.consumedAt || challenge.lockedAt || challenge.expiresAt <= now || challenge.failedAttempts >= otpMaxVerifyAttempts) return rejectAttempt();
-    if (challenge.provider === "msg91") {
-      try { await verifyOtpViaMsg91(mobile, otp); } catch { return rejectAttempt(); }
-    } else {
-      const expected = String(challenge.otpHash || "");
-      const actual = createOtpHash(mobile, otp, String(process.env.JWT_SECRET || ""));
-      if (!expected || !secureOtpMatch(expected, actual)) return rejectAttempt();
-    }
+    const expected = String(challenge.otpHash || "");
+    const actual = createOtpHash(mobile, otp, String(process.env.JWT_SECRET || ""));
+    if (!expected || !secureOtpMatch(expected, actual)) return rejectAttempt();
 
     const consumed = await OtpChallenge.findOneAndUpdate(
       { _id: challenge._id, consumedAt: null, lockedAt: null, expiresAt: { $gt: now }, failedAttempts: { $lt: otpMaxVerifyAttempts } },
@@ -1886,6 +1842,7 @@ server.listen(PORT, () => {
       razorpayKeyId && razorpayKeySecret
     )}`
   );
+  if (otpDemoConfiguration) console.info("OTP evaluator demo mode enabled");
 });
 
 setInterval(() => {
