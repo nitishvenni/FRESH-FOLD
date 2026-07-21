@@ -109,6 +109,16 @@ export const registerSocketAuthorization = (
         acknowledge(callback, { ok: false, error: "Invalid request" });
       }
     });
+
+    socket.on("leaveTicket", (rawTicketId: unknown, callback?: unknown) => {
+      const ticketId = typeof rawTicketId === "string" ? rawTicketId.trim() : "";
+      if (!mongoose.isValidObjectId(ticketId)) {
+        acknowledge(callback, { ok: false, error: "Invalid request" });
+        return;
+      }
+      socket.leave(getTicketRoom(ticketId));
+      acknowledge(callback, { ok: true });
+    });
   });
 };
 
