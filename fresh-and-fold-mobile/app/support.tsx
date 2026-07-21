@@ -269,15 +269,23 @@ export default function SupportScreen() {
       logSupportSocketDiagnostic("socket_connect", "connect_error");
     };
 
-    supportSocket.on("ticketMessage", handleTicketMessage);
-    supportSocket.on("ticketUpdated", handleTicketUpdated);
-    supportSocket.on("connect_error", handleSocketError);
-    void connectAuthenticatedSocket(supportSocket).then((connected) => {
-      if (active && connected && isCurrentGeneration(listenerGeneration) && ticketIdRef.current === ticketId) {
+    const joinTicketRoom = () => {
+      if (active && isCurrentGeneration(listenerGeneration) && ticketIdRef.current === ticketId) {
         supportSocket.emit("joinTicket", ticketId, (result: { ok?: boolean } | undefined) => {
           if (active && result?.ok === false) logSupportSocketDiagnostic("join_ticket", "join_rejected");
         });
-      } else if (active && !connected) {
+      }
+    };
+
+    supportSocket.on("ticketMessage", handleTicketMessage);
+    supportSocket.on("ticketUpdated", handleTicketUpdated);
+    supportSocket.on("connect_error", handleSocketError);
+    supportSocket.on("connect", joinTicketRoom);
+    
+    void connectAuthenticatedSocket(supportSocket).then((connected) => {
+      if (connected) {
+        joinTicketRoom();
+      } else if (active) {
         logSupportSocketDiagnostic("socket_connect", "missing_token");
       }
     });
@@ -287,6 +295,7 @@ export default function SupportScreen() {
       supportSocket.off("ticketMessage", handleTicketMessage);
       supportSocket.off("ticketUpdated", handleTicketUpdated);
       supportSocket.off("connect_error", handleSocketError);
+      supportSocket.off("connect", joinTicketRoom);
     };
   }, [ticketId]);
 

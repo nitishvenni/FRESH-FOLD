@@ -100,8 +100,9 @@ export default function TrackOrder() {
 
   useEffect(() => {
     const handleOrderUpdated = (updatedOrder: OrderStatusUpdate) => {
+      console.log("[OrderSocket] orderUpdated received");
       if (updatedOrder?.orderId === String(orderId) && updatedOrder.status) {
-        setOrder({ _id: updatedOrder.orderId, status: updatedOrder.status });
+        void fetchOrder();
       }
     };
 
@@ -134,7 +135,7 @@ export default function TrackOrder() {
   const fetchOrder = async () => {
     try {
       const data = await apiRequest<{ success: boolean; orders: Order[] }>("/orders");
-      const found = data.orders.find((item) => item._id === orderId);
+      const found = data.orders.find((item) => String(item._id) === String(orderId));
       setOrder(found || null);
     } catch (error) {
       if (!order) {
