@@ -100,7 +100,7 @@ export default function TrackOrder() {
 
   useEffect(() => {
     const handleOrderUpdated = (updatedOrder: OrderStatusUpdate) => {
-      if (updatedOrder?.orderId === orderId && updatedOrder.status) {
+      if (updatedOrder?.orderId === String(orderId) && updatedOrder.status) {
         setOrder({ _id: updatedOrder.orderId, status: updatedOrder.status });
       }
     };
@@ -110,7 +110,6 @@ export default function TrackOrder() {
 
     return () => {
       orderSocket.off("orderUpdated", handleOrderUpdated);
-      orderSocket.disconnect();
     };
   }, [orderId]);
 

@@ -229,7 +229,6 @@ export default function SupportScreen() {
     if (!ticketId) {
       supportSocket.off("ticketMessage");
       supportSocket.off("ticketUpdated");
-      supportSocket.disconnect();
       return;
     }
 
@@ -288,7 +287,6 @@ export default function SupportScreen() {
       supportSocket.off("ticketMessage", handleTicketMessage);
       supportSocket.off("ticketUpdated", handleTicketUpdated);
       supportSocket.off("connect_error", handleSocketError);
-      supportSocket.disconnect();
     };
   }, [ticketId]);
 
@@ -526,7 +524,6 @@ export default function SupportScreen() {
     setRefreshing(false);
     supportSocket.off("ticketMessage");
     supportSocket.off("ticketUpdated");
-    supportSocket.disconnect();
 
     try {
       const clearedState: StoredSupportState = {

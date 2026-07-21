@@ -329,6 +329,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     oscillator.stop(audioContext.currentTime + 0.12);
   }, [soundEnabled]);
 
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
+
   useEffect(() => {
     if (!normalizedToken) return;
 
@@ -341,8 +343,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       autoConnect: false,
       auth: { token: normalizedToken },
     });
+    
+    socketRef.current = socket;
+
     socket.on("ordersUpdated", fetchOrders);
-    socket.on("orderUpdated", (order: OrderStatusUpdate) => {
+    
+    const handleOrderUpdated = (order: OrderStatusUpdate) => {
       if (!order?.orderId || !order.status) return;
       pushNotification({
         type: "order",
@@ -355,9 +361,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         meta: `${order.cleaningService && order.speed ? `${order.cleaningService === "dry" ? "Dry Clean" : "Wash & Iron"} · ${order.speed === "express" ? "Express" : "Standard"}` : order.service || "Laundry"} is now ${order.status}`,
       });
       void fetchOrders();
-    });
+    };
+    
+    socket.on("orderUpdated", handleOrderUpdated);
     socket.on("ticketsUpdated", fetchTickets);
-    socket.on("ticketCreated", (payload?: TicketCreatedEvent) => {
+    
+    const handleTicketCreated = (payload?: TicketCreatedEvent) => {
       setNewTicketAlerts((value) => value + 1);
       const ticket = payload?.ticket;
       if (ticket) {
@@ -375,17 +384,26 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       void fetchTickets();
       void fetchSupportAnalytics();
       playNotificationTone();
-    });
-    socket.on("ticketMessage", (payload: { ticketId?: string }) => {
+    };
+    
+    socket.on("ticketCreated", handleTicketCreated);
+    
+    const handleTicketMessage = (payload: { ticketId?: string }) => {
       if (payload?.ticketId) {
         void fetchTickets();
       }
-    });
-    socket.on("ticketUpdated", () => {
+    };
+    
+    socket.on("ticketMessage", handleTicketMessage);
+    
+    const handleTicketUpdated = () => {
       void fetchTickets();
       void fetchSupportAnalytics();
-    });
-    socket.on("ticketOverdueAlert", (payload?: { overdueCount?: number }) => {
+    };
+    
+    socket.on("ticketUpdated", handleTicketUpdated);
+    
+    const handleTicketOverdueAlert = (payload?: { overdueCount?: number }) => {
       pushNotification({
         type: "delay",
         title: "SLA breach warning",
@@ -398,15 +416,43 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       });
       void fetchSupportAnalytics();
       playNotificationTone();
-    });
-    socket.on("connect", () => {
-      if (selectedTicketId) socket.emit("joinTicket", selectedTicketId);
-    });
-    socket.connect();
-    return () => {
-      socket.disconnect();
     };
-  }, [normalizedToken, selectedTicketId, fetchOrders, fetchTickets, fetchSupportAnalytics, fetchAiOperationsAnalytics, playNotificationTone]);
+    
+    socket.on("ticketOverdueAlert", handleTicketOverdueAlert);
+
+    socket.connect();
+    
+    return () => {
+      socket.off("ordersUpdated", fetchOrders);
+      socket.off("orderUpdated", handleOrderUpdated);
+      socket.off("ticketsUpdated", fetchTickets);
+      socket.off("ticketCreated", handleTicketCreated);
+      socket.off("ticketMessage", handleTicketMessage);
+      socket.off("ticketUpdated", handleTicketUpdated);
+      socket.off("ticketOverdueAlert", handleTicketOverdueAlert);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [normalizedToken, fetchOrders, fetchTickets, fetchSupportAnalytics, fetchAiOperationsAnalytics, playNotificationTone]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !selectedTicketId) return;
+
+    const joinTicketRoom = () => {
+      socket.emit("joinTicket", selectedTicketId);
+    };
+
+    if (socket.connected) {
+      joinTicketRoom();
+    }
+
+    socket.on("connect", joinTicketRoom);
+
+    return () => {
+      socket.off("connect", joinTicketRoom);
+    };
+  }, [selectedTicketId]);
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
