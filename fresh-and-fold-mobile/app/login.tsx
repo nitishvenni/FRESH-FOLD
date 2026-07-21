@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
   },
   logoWrap: {
     alignItems: "center",
-    marginBottom: 36,
+    marginBottom: 40,
   },
   logoBadge: {
     width: 82,
@@ -198,7 +198,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+    ...Platform.select({
+      ios: {},
+      android: { elevation: 0 },
+    }),
   },
   cardTitle: {
     fontSize: 24,

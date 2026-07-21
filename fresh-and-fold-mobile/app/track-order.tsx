@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -428,7 +429,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    ...Platform.select({
+      ios: {},
+      android: { elevation: 0 },
+    }),
   },
   overviewRow: {
     flexDirection: "row",

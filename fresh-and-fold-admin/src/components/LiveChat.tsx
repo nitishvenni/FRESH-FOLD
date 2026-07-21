@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import {
   buttonStyle,
   getTicketStatusStyle,
@@ -24,6 +25,41 @@ export default function LiveChat({
   onSendReply: () => Promise<void>;
   onResolve: (id: string, status: SupportTicket["status"]) => Promise<void>;
 }) {
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevTicketIdRef = useRef<string | null>(null);
+  const prevMessagesLengthRef = useRef<number>(0);
+
+  useLayoutEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container || !selectedTicket) return;
+
+    const isNewTicket = selectedTicket.id !== prevTicketIdRef.current;
+    const messages = selectedTicket.messages;
+    const lastMessage = messages[messages.length - 1];
+
+    if (isNewTicket) {
+      // Initial ticket load: jump to bottom
+      container.scrollTop = container.scrollHeight;
+      isNearBottomRef.current = true;
+    } else if (messages.length > prevMessagesLengthRef.current) {
+      // New message arrived
+      if (lastMessage?.sender === "admin" || isNearBottomRef.current) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    prevTicketIdRef.current = selectedTicket.id;
+    prevMessagesLengthRef.current = messages.length;
+  }, [selectedTicket?.id, selectedTicket?.messages?.length]);
+
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const distance = scrollHeight - scrollTop - clientHeight;
+    isNearBottomRef.current = distance < 120;
+  };
+
   return (
     <div
       style={{
@@ -74,6 +110,8 @@ export default function LiveChat({
           </div>
         ) : (
           <div
+            ref={chatContainerRef}
+            onScroll={handleScroll}
             style={{
               marginTop: 18,
               display: "flex",

@@ -4,7 +4,6 @@ import { getStoredAuthToken } from "./api";
 
 const socketOptions = {
   autoConnect: false,
-  transports: ["websocket"],
 };
 
 export const orderSocket = io(API_BASE_URL, socketOptions);
@@ -25,6 +24,18 @@ export async function connectAuthenticatedSocket(socket: Socket) {
   if (!token) {
     socket.disconnect();
     return false;
+  }
+
+  const currentAuth = socket.auth as { token?: string } | undefined;
+  if (currentAuth?.token === token) {
+    if (!socket.connected) {
+      socket.connect();
+    }
+    return true;
+  }
+
+  if (socket.connected) {
+    socket.disconnect();
   }
 
   socket.auth = { token };

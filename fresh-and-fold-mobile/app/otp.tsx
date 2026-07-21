@@ -268,7 +268,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+    ...Platform.select({
+      ios: {},
+      android: { elevation: 0 },
+    }),
   },
   cardHeader: {
     flexDirection: "row",
@@ -290,7 +293,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 26,
+    marginBottom: 24,
   },
   mobileNumber: {
     fontSize: 16,

@@ -152,6 +152,9 @@ export default function SupportScreen() {
   const conversationGenerationRef = useRef(0);
   const storageHydratedRef = useRef(false);
   const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  
+  const isNearBottomRef = useRef(true);
+  const pendingScrollRef = useRef<"smooth" | "auto" | null>(null);
 
   const isCurrentGeneration = (generation: number) =>
     conversationGenerationRef.current === generation;
@@ -175,13 +178,11 @@ export default function SupportScreen() {
         (o.status || "").toLowerCase() !== "cancelled"
     );
   }, [orders]);
-
   useEffect(() => {
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [messages, aiTyping]);
-
+    if (aiTyping && isNearBottomRef.current) {
+      pendingScrollRef.current = "smooth";
+    }
+  }, [aiTyping]);
   useEffect(() => {
     void loadStoredState();
   }, []);
@@ -240,6 +241,9 @@ export default function SupportScreen() {
         ticketIdRef.current !== ticketId
       ) {
         return;
+      }
+      if (isNearBottomRef.current) {
+        pendingScrollRef.current = "smooth";
       }
       const mapped = mapTicketMessageToChat(payload.message, Date.now());
       setMessages((prev) => {
@@ -439,6 +443,9 @@ export default function SupportScreen() {
       return false;
     }
 
+    if (ticketIdRef.current !== ticket.id) {
+      pendingScrollRef.current = "auto";
+    }
     setActiveTicketId(ticket.id);
     setTicketStatus(ticket.status);
     const ticketMessages = ticket.messages.map(mapTicketMessageToChat);
@@ -479,6 +486,9 @@ export default function SupportScreen() {
   ) => {
     if (!isCurrentGeneration(generation)) {
       return;
+    }
+    if (isNearBottomRef.current) {
+      pendingScrollRef.current = "smooth";
     }
     setMessages((prev) => {
       if (!isCurrentGeneration(generation)) {
@@ -694,6 +704,7 @@ export default function SupportScreen() {
     const forceNewTicket = pendingNewConversationRef.current;
     const activeTicketId = ticketIdRef.current;
 
+    pendingScrollRef.current = "smooth";
     setInput("");
     setMessages((prev) => [
       ...prev,
@@ -746,6 +757,8 @@ export default function SupportScreen() {
     const generation = conversationGenerationRef.current;
     const forceNewTicket = pendingNewConversationRef.current;
     const text = input.trim() || "User requested to connect with support team";
+    
+    pendingScrollRef.current = "smooth";
     setInput("");
     setLoading(true);
     try {
@@ -837,6 +850,18 @@ export default function SupportScreen() {
           contentContainerStyle={[styles.messages, { paddingBottom: listBottomPadding }]}
           keyboardDismissMode="none"
           keyboardShouldPersistTaps="always"
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+            const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+            isNearBottomRef.current = distanceFromBottom <= 120;
+          }}
+          onContentSizeChange={() => {
+            if (pendingScrollRef.current) {
+              listRef.current?.scrollToEnd({ animated: pendingScrollRef.current === "smooth" });
+              pendingScrollRef.current = null;
+            }
+          }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

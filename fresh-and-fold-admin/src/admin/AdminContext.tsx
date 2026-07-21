@@ -340,6 +340,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     void fetchAiOperationsAnalytics();
 
     const socket = io(API_BASE_URL, {
+      forceNew: true,
       autoConnect: false,
       auth: { token: normalizedToken },
     });
@@ -450,6 +451,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     socket.on("connect", joinTicketRoom);
 
     return () => {
+      socket.emit("leaveTicket", selectedTicketId);
       socket.off("connect", joinTicketRoom);
     };
   }, [selectedTicketId]);
