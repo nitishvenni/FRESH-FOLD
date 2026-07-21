@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ORDER_STEPS } from "../admin/constants";
+import { getValidNextStatuses } from "../admin/constants";
 import Skeleton from "./Skeleton";
 import {
   getOrderStatusStyle,
@@ -130,7 +130,7 @@ export default function OrderTable({
                   }}
                   style={{ ...selectStyle, padding: "6px 28px 6px 12px", minWidth: 140, borderRadius: 8, fontSize: 13 }}
                 >
-                  {ORDER_STEPS.map((step) => (
+                  {getValidNextStatuses(order.status).map((step) => (
                     <option key={step} value={step}>
                       {step}
                     </option>

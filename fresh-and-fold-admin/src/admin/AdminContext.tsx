@@ -18,6 +18,7 @@ type AdminContextValue = {
   activityFeed: ActivityFeedItem[];
   soundEnabled: boolean;
   error: string | null;
+  statusUpdateError: string | null;
   adminToken: string | null;
   normalizedToken: string;
   selectedTicketId: string | null;
@@ -42,6 +43,7 @@ type AdminContextValue = {
   setTicketReply: (value: string) => void;
   setSoundEnabled: (value: boolean | ((value: boolean) => boolean)) => void;
   clearTicketAlerts: () => void;
+  clearStatusUpdateError: () => void;
   clearNotifications: () => void;
   markNotificationsRead: () => void;
 };
@@ -94,6 +96,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [ticketReply, setTicketReply] = useState("");
   const [sendingTicketReply, setSendingTicketReply] = useState(false);
@@ -166,6 +169,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setSelectedTicketId(null);
     setTicketReply("");
     setError(null);
+    setStatusUpdateError(null);
     orderCountRef.current = null;
     staleOrderCountRef.current = null;
   }, []);
@@ -448,6 +452,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateOrderStatus = useCallback(async (id: string, status: string) => {
+    setStatusUpdateError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/orders/${id}/status`, {
         method: "PATCH",
@@ -458,9 +463,22 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         logout();
         return;
       }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        if (res.status === 409) {
+          setStatusUpdateError("Order status can only move to the next stage.");
+        } else {
+          setStatusUpdateError(
+            typeof data.message === "string" && data.message
+              ? data.message
+              : "Order status update failed."
+          );
+        }
+        return;
+      }
       await fetchOrders();
     } catch {
-      setError("Status update failed");
+      setStatusUpdateError("Unable to update order status. Please try again.");
     }
   }, [authHeaders, fetchOrders, logout]);
 
@@ -566,6 +584,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     activityFeed,
     soundEnabled,
     error,
+    statusUpdateError,
     adminToken,
     normalizedToken,
     selectedTicketId,
@@ -590,6 +609,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setTicketReply,
     setSoundEnabled,
     clearTicketAlerts: () => setNewTicketAlerts(0),
+    clearStatusUpdateError: () => setStatusUpdateError(null),
     clearNotifications: () => {
       setNotifications([]);
       setUnreadNotificationCount(0);
@@ -610,6 +630,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     activityFeed,
     soundEnabled,
     error,
+    statusUpdateError,
     adminToken,
     normalizedToken,
     selectedTicketId,

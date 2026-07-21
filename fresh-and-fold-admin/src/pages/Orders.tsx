@@ -7,7 +7,7 @@ import { getOrderServiceLabel, type Order } from "../admin/types";
 import { X, Search } from "lucide-react";
 
 export default function OrdersPage() {
-  const { orders, loadingOrders, updateOrderStatus, simulateOrder } = useAdminData();
+  const { orders, loadingOrders, updateOrderStatus, simulateOrder, statusUpdateError, clearStatusUpdateError } = useAdminData();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [serviceFilter, setServiceFilter] = useState("All");
@@ -145,6 +145,34 @@ export default function OrdersPage() {
           </button>
         )}
       </div>
+
+      {statusUpdateError && (
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "12px 16px",
+          borderRadius: 12,
+          background: "rgba(220, 38, 38, 0.15)",
+          border: "1px solid rgba(220, 38, 38, 0.3)",
+          color: "#fca5a5"
+        }}>
+          <span>{statusUpdateError}</span>
+          <button
+            onClick={clearStatusUpdateError}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#fca5a5",
+              cursor: "pointer",
+              padding: 4,
+              display: "flex"
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       <div style={glassCard}>
         <OrderTable
