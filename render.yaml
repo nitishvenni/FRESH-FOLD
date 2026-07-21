@@ -3,7 +3,10 @@ services:
     name: fresh-fold-api
     runtime: node
     rootDir: fresh-and-fold-backend
-    buildCommand: npm ci && npm run build
+    # NODE_ENV=production omits devDependencies by default, but TypeScript and
+    # declaration packages are required to compile. Install deterministically
+    # for the build, then prune them before the production start command.
+    buildCommand: npm ci --include=dev && npm run build && npm prune --omit=dev
     startCommand: npm start
     envVars:
       - key: NODE_ENV
