@@ -1,7 +1,7 @@
 export const ORDER_STATUSES = [
   "Scheduled",
-  "Received at Facility",
   "Picked Up",
+  "Received at Facility",
   "Washing",
   "Ironing",
   "Out for Delivery",

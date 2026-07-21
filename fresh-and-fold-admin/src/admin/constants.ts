@@ -2,8 +2,8 @@ import type { SupportTicket } from "./types";
 
 export const ORDER_STEPS = [
   "Scheduled",
-  "Received at Facility",
   "Picked Up",
+  "Received at Facility",
   "Washing",
   "Ironing",
   "Out for Delivery",
