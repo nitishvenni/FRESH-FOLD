@@ -24,6 +24,7 @@ import { APP_TAB_BAR_HEIGHT } from "../components/AppTabBar";
 import ChatBubble from "../components/ChatBubble";
 import { radius, typography } from "../theme/theme";
 import { handleError } from "../utils/errorHandler";
+import { logSupportRequestDiagnostic, logSupportSocketDiagnostic, supportRequestFailureMessage } from "../utils/supportRequestError";
 import { showToast } from "../utils/toast";
 import { useAppTheme } from "../hooks/useAppTheme";
 import useOrders from "../hooks/useOrders";
@@ -265,11 +266,20 @@ export default function SupportScreen() {
       if (ticket.status) setTicketStatus(ticket.status);
     };
 
+    const handleSocketError = () => {
+      logSupportSocketDiagnostic("socket_connect", "connect_error");
+    };
+
     supportSocket.on("ticketMessage", handleTicketMessage);
     supportSocket.on("ticketUpdated", handleTicketUpdated);
+    supportSocket.on("connect_error", handleSocketError);
     void connectAuthenticatedSocket(supportSocket).then((connected) => {
       if (active && connected && isCurrentGeneration(listenerGeneration) && ticketIdRef.current === ticketId) {
-        supportSocket.emit("joinTicket", ticketId);
+        supportSocket.emit("joinTicket", ticketId, (result: { ok?: boolean } | undefined) => {
+          if (active && result?.ok === false) logSupportSocketDiagnostic("join_ticket", "join_rejected");
+        });
+      } else if (active && !connected) {
+        logSupportSocketDiagnostic("socket_connect", "missing_token");
       }
     });
 
@@ -277,6 +287,7 @@ export default function SupportScreen() {
       active = false;
       supportSocket.off("ticketMessage", handleTicketMessage);
       supportSocket.off("ticketUpdated", handleTicketUpdated);
+      supportSocket.off("connect_error", handleSocketError);
       supportSocket.disconnect();
     };
   }, [ticketId]);
@@ -396,7 +407,7 @@ export default function SupportScreen() {
       }
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "SESSION_EXPIRED") {
-        console.log("Failed to load active ticket");
+        logSupportRequestDiagnostic("load_active_ticket", error);
       }
     }
   };
@@ -713,7 +724,8 @@ export default function SupportScreen() {
       if (error instanceof Error && error.message === "SESSION_EXPIRED") {
         appendTransientMessage("assistant", "Your session expired. Please log in again.");
       } else {
-        appendTransientMessage("assistant", "Network error. Please try again.");
+        logSupportRequestDiagnostic("send_message", error);
+        appendTransientMessage("assistant", supportRequestFailureMessage(error));
       }
     } finally {
       if (isCurrentGeneration(generation)) {

@@ -29,6 +29,9 @@ export default function PaymentRecoveryScreen() {
       const result = await getPaymentIntent(intentId);
       if (result.order) {
         await Promise.all([clearPendingPaymentIntentId(), clearBookingDraft()]);
+        if (router.canDismiss()) {
+          router.dismissAll();
+        }
         router.replace({ pathname: "/order-confirmation", params: { orderId: result.order._id, total: result.order.totalAmount, status: result.order.status || "Scheduled", date: result.order.pickupDate || "", slot: result.order.pickupSlot || "" } });
         return;
       }

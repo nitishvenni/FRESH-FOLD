@@ -1,8 +1,9 @@
 import { MaterialIcons, Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect } from "react";
+import { BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import Animated, { FadeInDown, FadeInUp, ZoomIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../hooks/useAppTheme";
@@ -15,6 +16,23 @@ export default function OrderConfirmation() {
   const insets = useSafeAreaInsets();
   const { total, date, slot, orderId, status } = useLocalSearchParams();
   const { theme, isDark } = useAppTheme();
+
+  const returnHome = useCallback(() => {
+    if (router.canDismiss()) {
+      router.dismissAll();
+    }
+    router.replace("/home");
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+        returnHome();
+        return true;
+      });
+      return () => subscription.remove();
+    }, [returnHome])
+  );
 
   useEffect(() => {
     void triggerSuccessHaptic();

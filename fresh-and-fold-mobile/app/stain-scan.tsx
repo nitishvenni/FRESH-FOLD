@@ -128,7 +128,7 @@ export default function StainScanScreen() {
       if (!controller.signal.aborted) {
         router.replace({
           pathname: "/stain-analysis" as never,
-          params: { result: JSON.stringify(result) },
+          params: { result: JSON.stringify(result), imageUri: selected.image.uri },
         });
       }
     } catch (scanError) {
@@ -173,8 +173,11 @@ export default function StainScanScreen() {
         <View style={[styles.heroCard, { backgroundColor: theme.aiCareCardGlass, borderColor: theme.aiCareGlassBorder }]}>
           <View pointerEvents="none" style={[styles.glassHighlight, { backgroundColor: theme.aiCareGlassHighlight }]} />
           <View style={[styles.heroIcon, { backgroundColor: isDark ? theme.aiBubbleBg : theme.primarySoft, borderColor: theme.aiCareGlassBorder }]}>
-            <MaterialIcons name="search" size={35} color={theme.primary} />
-            <View style={[styles.heroIconBadge, { backgroundColor: theme.primary }]}><MaterialIcons name="water-drop" size={12} color="#FFFFFF" /></View>
+            <Image 
+              source={require("../assets/images/brand/stain-scan-logo.jpg")} 
+              style={{ width: 74, height: 74, borderRadius: 27 }} 
+              resizeMode="cover" 
+            />
           </View>
           <View style={styles.heroCopy}>
             <Text maxFontSizeMultiplier={1.2} style={[styles.heroTitle, { color: theme.text }]}>Smart Stain Analysis</Text>

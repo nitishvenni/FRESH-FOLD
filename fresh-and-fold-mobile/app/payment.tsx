@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import RazorpayCheckout from "react-native-razorpay";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,11 +11,12 @@ import { handleError } from "../utils/errorHandler";
 import { triggerImpactHaptic } from "../utils/haptics";
 import { calculateSubtotal, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD, getNormalizedCleaningService, getNormalizedSpeed } from "../utils/pricing";
 import { getOrderPreview } from "../services/orderService";
-import { clearPendingPaymentIntentId, createPaymentOrder, reportPaymentFailure, savePendingPaymentIntentId, verifyPayment } from "../services/paymentService";
+import { clearPendingPaymentIntentId, createPaymentOrder, getPaymentIntent, getPendingPaymentIntentId, reportPaymentFailure, savePendingPaymentIntentId, verifyPayment } from "../services/paymentService";
 import { formatPrice } from "../utils/formatPrice";
 import { showToast } from "../utils/toast";
 import { clearBookingDraft } from "../utils/bookingDraft";
 import { getCanonicalBookingDate } from "../utils/bookingSchedule";
+import { paymentReentryAction } from "../utils/paymentReentry";
 
 const getPaymentFailureMessage = (error: any) => {
   const raw = String(error?.description || error?.message || "")
@@ -71,6 +72,11 @@ export default function Payment() {
   };
 
   const goToConfirmation = (params: { orderId: string; total: number; status?: string }) => {
+    // Remove the completed payment/booking stack before placing confirmation on
+    // top, so Android Back and gestures cannot return to checkout.
+    if (router.canDismiss()) {
+      router.dismissAll();
+    }
     router.replace({
       pathname: "/order-confirmation",
       params: {
@@ -89,6 +95,7 @@ export default function Payment() {
   const [backendTotal, setBackendTotal] = useState<number>(fallbackSubtotal + fallbackDelivery);
   const [pricingRefreshing, setPricingRefreshing] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const paymentSubmissionRef = useRef(false);
 
   useEffect(() => {
     void fetchPreview();
@@ -151,7 +158,32 @@ export default function Payment() {
     }
   };
 
+  const recoverExistingPaymentIntent = async (): Promise<boolean> => {
+    const paymentIntentId = await getPendingPaymentIntentId();
+    if (!paymentIntentId) return false;
+
+    try {
+      const intent = await getPaymentIntent(paymentIntentId);
+      if (paymentReentryAction(intent) === "confirmation" && intent.order) {
+        await Promise.all([clearPendingPaymentIntentId(), clearBookingDraft()]);
+        goToConfirmation({
+          orderId: intent.order._id,
+          total: intent.order.totalAmount,
+          status: intent.order.status,
+        });
+      } else {
+        router.replace({ pathname: "/payment-recovery", params: { paymentIntentId } });
+      }
+    } catch {
+      // The state cannot be proved safe to replace with a new checkout while
+      // offline, so keep recovery as the conservative path.
+      router.replace({ pathname: "/payment-recovery", params: { paymentIntentId } });
+    }
+    return true;
+  };
+
   const startRazorpayPayment = async () => {
+    if (await recoverExistingPaymentIntent()) return;
     if (__DEV__) {
       console.log("[RAZORPAY DEBUG] Creating payment order in backend...");
     }
@@ -268,10 +300,11 @@ export default function Payment() {
   };
 
   const confirmOrder = async () => {
-    if (processingPayment) {
+    if (processingPayment || paymentSubmissionRef.current) {
       return;
     }
 
+    paymentSubmissionRef.current = true;
     setProcessingPayment(true);
     try {
       void triggerImpactHaptic();
@@ -290,6 +323,7 @@ export default function Payment() {
         });
       }
     } finally {
+      paymentSubmissionRef.current = false;
       setProcessingPayment(false);
     }
   };

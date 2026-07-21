@@ -137,7 +137,11 @@ export default function FabricScanScreen() {
         <View style={[styles.heroCard, { backgroundColor: glassBg, borderColor: glassBorder }]}>
           <View style={styles.heroIllustrationContainer}>
             <View style={[styles.heroIconCircle, { backgroundColor: iconBg }]}>
-              <MaterialCommunityIcons name="magnify-scan" size={48} color={theme.primary} />
+              <Image 
+                source={require("../assets/images/brand/fabric-identification-logo.jpg")} 
+                style={{ width: 94, height: 94, borderRadius: 47 }} 
+                resizeMode="cover" 
+              />
             </View>
           </View>
           <View style={styles.heroContent}>

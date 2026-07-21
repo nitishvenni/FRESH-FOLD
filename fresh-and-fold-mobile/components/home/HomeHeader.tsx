@@ -59,23 +59,15 @@ function HomeHeader({ firstName, onNotificationsPress }: HomeHeaderProps) {
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
-        <GlassCircle accessibilityLabel="Menu">
-          <Ionicons name="menu-outline" size={24} color={theme.text} />
-        </GlassCircle>
-        <View style={styles.rightControls}>
-          <View>
-            <GlassCircle
-              onPress={onNotificationsPress}
-              accessibilityLabel="Notifications, unread"
-              accessibilityHint="Opens your profile."
-            >
-              <Ionicons name="notifications-outline" size={21} color={theme.text} />
-            </GlassCircle>
-            <View accessible={false} style={[styles.notifDot, { backgroundColor: theme.primary, borderColor: isDark ? theme.headerButtonBg : "#FFFFFF" }]} />
-          </View>
-          <GlassCircle accessibilityLabel="AI Assistant">
-            <Ionicons name="sparkles-outline" size={20} color={theme.primary} />
+        <View>
+          <GlassCircle
+            onPress={onNotificationsPress}
+            accessibilityLabel="Notifications, unread"
+            accessibilityHint="Opens your profile."
+          >
+            <Ionicons name="notifications-outline" size={21} color={theme.text} />
           </GlassCircle>
+          <View accessible={false} style={[styles.notifDot, { backgroundColor: theme.primary, borderColor: isDark ? theme.headerButtonBg : "#FFFFFF" }]} />
         </View>
       </View>
       <View style={styles.greetingBlock}>
@@ -90,7 +82,7 @@ export default memo(HomeHeader);
 
 const styles = StyleSheet.create({
   container: { paddingBottom: 4 },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 46 },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", minHeight: 46 },
   rightControls: { flexDirection: "row", alignItems: "center", gap: 10 },
   control: {
     width: 44,
@@ -105,7 +97,7 @@ const styles = StyleSheet.create({
     }),
   },
   notifDot: { position: "absolute", top: 6, right: 7, width: 8, height: 8, borderRadius: 4, backgroundColor: "#2563EB", borderWidth: 1.5, borderColor: "#FFFFFF" },
-  greetingBlock: { marginTop: 18 },
+  greetingBlock: { marginTop: 4 },
   greeting: { fontSize: 17, lineHeight: 21, letterSpacing: -0.15 },
   name: { marginTop: 2, fontSize: 29, lineHeight: 35, fontWeight: "700", letterSpacing: -0.7 },
 });

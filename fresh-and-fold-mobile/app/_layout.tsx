@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import * as SplashScreen from "expo-splash-screen";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from "@expo-google-fonts/inter";
 import { useEffect, useRef } from "react";
-import { Platform, Text, TextInput, View } from "react-native";
+import { BackHandler, Platform, Text, TextInput, View } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
 import Loader from "../components/Loader";
@@ -14,6 +14,7 @@ import { useAppTheme } from "../hooks/useAppTheme";
 import { typography } from "../theme/theme";
 import { bootstrapNotifications } from "../utils/notifications";
 import { getAuthRedirectTarget } from "../utils/authRedirect";
+import { shouldReturnMainTabBackToHome } from "../utils/mainTabBack";
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore splash lock races during reloads.
@@ -87,6 +88,15 @@ function RootNavigation() {
     lastRedirectRef.current = redirectKey;
     router.replace(target);
   }, [isLoggedIn, loading, pathname, rootNavigationState?.key, router, themeLoading]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !shouldReturnMainTabBackToHome(pathname)) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      router.replace("/home");
+      return true;
+    });
+    return () => subscription.remove();
+  }, [pathname, router]);
 
   if (loading || themeLoading) {
     return <Loader />;

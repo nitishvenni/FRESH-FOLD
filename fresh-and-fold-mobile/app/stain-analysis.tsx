@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { type ComponentProps, type ReactNode, useMemo } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { homeDesign } from "../theme/theme";
@@ -91,7 +91,7 @@ export default function StainAnalysisScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
-  const { result: resultParam } = useLocalSearchParams<{ result?: string }>();
+  const { result: resultParam, imageUri } = useLocalSearchParams<{ result?: string; imageUri?: string }>();
   const result = useMemo(() => parseResult(resultParam), [resultParam]);
   const possibleCandidates = result?.stain === "unknown" ? result.candidates : [];
   const careItems = useMemo<CareItem[]>(() => {
@@ -130,6 +130,16 @@ export default function StainAnalysisScreen() {
               <MaterialIcons name={status!.icon} size={18} color={result.status === "complete" || result.status === "no_match" ? theme.success : theme.warning} />
               <Text maxFontSizeMultiplier={1.2} style={[styles.statusText, { color: result.status === "complete" || result.status === "no_match" ? theme.success : theme.warning }]}>{status!.title}</Text>
             </View>
+
+            {imageUri ? (
+              <Surface style={styles.previewCard}>
+                <View style={styles.sectionHeading}>
+                  <MaterialIcons name="image" size={20} color={theme.primary} />
+                  <Text maxFontSizeMultiplier={1.2} style={[styles.sectionTitle, { color: theme.text }]}>Stain Preview</Text>
+                </View>
+                <Image accessible accessibilityLabel="Submitted stain image" source={{ uri: imageUri }} style={[styles.previewImage, { borderColor: theme.aiCareGlassBorder }]} resizeMode="cover" />
+              </Surface>
+            ) : null}
 
             <Surface style={styles.resultCard}>
               <View style={styles.resultHeading}>
@@ -245,6 +255,8 @@ const styles = StyleSheet.create({
   unavailableCopy: { marginTop: 6, fontSize: 13, lineHeight: 19, textAlign: "center" },
   statusRow: { alignSelf: "center", minHeight: 34, marginTop: 16, borderRadius: 17, borderWidth: 1, paddingHorizontal: 12, flexDirection: "row", alignItems: "center" },
   statusText: { marginLeft: 6, fontSize: 12.5, fontWeight: "700" },
+  previewCard: { marginTop: 14 },
+  previewImage: { width: "100%", height: 200, borderRadius: 12, marginTop: 12, borderWidth: 1, backgroundColor: "rgba(0,0,0,0.05)" },
   resultCard: { marginTop: 14 },
   resultHeading: { flexDirection: "row", alignItems: "center" },
   resultIcon: { width: 62, height: 62, borderRadius: 22, borderWidth: 1, alignItems: "center", justifyContent: "center" },
